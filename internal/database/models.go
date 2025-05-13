@@ -3,3 +3,24 @@
 //   sqlc v1.28.0
 
 package database
+
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type MonthlyPlaylist struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	Songs     []string
+	Year      int16
+	Month     int16
+	Name      string
+	CreatedAt pgtype.Timestamptz
+}
+
+type User struct {
+	ID            pgtype.UUID
+	SpotifyUserID string
+	Email         string
+	CreatedAt     pgtype.Timestamp
+}

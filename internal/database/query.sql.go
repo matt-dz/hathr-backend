@@ -7,16 +7,54 @@ package database
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const helloWorld = `-- name: HelloWorld :one
-SELECT
-    'hello world'
+const createMonthlyPlaylist = `-- name: CreateMonthlyPlaylist :one
+INSERT INTO monthly_playlists(user_id, songs, year, month, name)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id
 `
 
-func (q *Queries) HelloWorld(ctx context.Context) (string, error) {
-	row := q.db.QueryRow(ctx, helloWorld)
-	var column_1 string
-	err := row.Scan(&column_1)
-	return column_1, err
+type CreateMonthlyPlaylistParams struct {
+	UserID pgtype.UUID
+	Songs  []string
+	Year   int16
+	Month  int16
+	Name   string
+}
+
+func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPlaylistParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, createMonthlyPlaylist,
+		arg.UserID,
+		arg.Songs,
+		arg.Year,
+		arg.Month,
+		arg.Name,
+	)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const upsertUser = `-- name: UpsertUser :one
+INSERT INTO users (spotify_user_id, email)
+VALUES ($1, $2)
+ON CONFLICT (spotify_user_id)
+  DO UPDATE
+    SET users.email = email
+RETURNING id
+`
+
+type UpsertUserParams struct {
+	SpotifyUserID string
+	Email         string
+}
+
+func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, upsertUser, arg.SpotifyUserID, arg.Email)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }

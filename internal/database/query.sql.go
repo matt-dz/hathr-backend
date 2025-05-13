@@ -38,6 +38,57 @@ func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPl
 	return id, err
 }
 
+const getPlaylist = `-- name: GetPlaylist :one
+SELECT id, user_id, songs, year, month, name, created_at FROM monthly_playlists WHERE id = $1
+`
+
+func (q *Queries) GetPlaylist(ctx context.Context, id pgtype.UUID) (MonthlyPlaylist, error) {
+	row := q.db.QueryRow(ctx, getPlaylist, id)
+	var i MonthlyPlaylist
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Songs,
+		&i.Year,
+		&i.Month,
+		&i.Name,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getUserPlaylists = `-- name: GetUserPlaylists :many
+SELECT id, user_id, songs, year, month, name, created_at FROM monthly_playlists WHERE user_id = $1
+`
+
+func (q *Queries) GetUserPlaylists(ctx context.Context, userID pgtype.UUID) ([]MonthlyPlaylist, error) {
+	rows, err := q.db.Query(ctx, getUserPlaylists, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MonthlyPlaylist
+	for rows.Next() {
+		var i MonthlyPlaylist
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Songs,
+			&i.Year,
+			&i.Month,
+			&i.Name,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertUser = `-- name: UpsertUser :one
 INSERT INTO users (spotify_user_id, email)
 VALUES ($1, $2)

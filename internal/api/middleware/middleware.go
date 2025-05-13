@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"hathr-backend/internal/api/handlers"
 	hathrEnv "hathr-backend/internal/env"
 	"hathr-backend/internal/logging"
 
@@ -83,4 +84,9 @@ func AddRoutes(router *mux.Router) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods("GET")
+
+	router.HandleFunc("/user", handlers.UpsertUser).Methods("POST")
+	router.HandleFunc("/playlists/{user_id}", handlers.GetUserPlaylists).Methods("GET")
+	router.HandleFunc("/playlist/{id}", handlers.GetPlaylist).Methods("GET")
+	router.HandleFunc("/playlist", handlers.CreateMonthlyPlaylist).Methods("POST")
 }

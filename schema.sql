@@ -1,5 +1,5 @@
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
+    id UUID DEFAULT gen_random_uuid (),
     spotify_user_id TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT now (),

@@ -60,7 +60,7 @@ func main() {
 	router.Use(middleware.LogRequest)
 	middleware.AddRoutes(router)
 
-	logger.Info("Serving at " + "0.0.0.0" + port)
+	logger.Info("Serving at " + "0.0.0.0:" + port)
 	http.Handle("/", router)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

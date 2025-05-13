@@ -55,6 +55,7 @@ func main() {
 		port = defaultPort
 	}
 	router := mux.NewRouter()
+	router.Use(middleware.HandleCORS)
 	router.Use(middleware.RecoverMiddleware)
 	router.Use(middleware.InjectEnvironment(env))
 	router.Use(middleware.LogRequest)

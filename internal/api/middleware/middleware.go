@@ -6,6 +6,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"hathr-backend/internal/api/handlers"
@@ -16,11 +17,22 @@ import (
 )
 
 const envKey = "env"
+const originURL = "https://hathr.deguzman.cloud"
 
 // Custom ResponseWriter that captures the status code
 type logResponseWriter struct {
 	http.ResponseWriter
 	statusCode int
+}
+
+// validateOrigin checks if the origin is in the allow list.
+func validateOrigin(origin string) bool {
+
+	if os.Getenv("ENV") == "PROD" {
+		return origin == originURL
+	}
+
+	return true
 }
 
 // Handles panic recovery
@@ -79,7 +91,29 @@ func LogRequest(next http.Handler) http.Handler {
 	})
 }
 
+func HandleCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		/* If origin is not in allow list, do not add CORS headers */
+		origin := r.Header.Get("Origin")
+		if !validateOrigin(origin) {
+			http.Error(w, "Invalid origin", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Add("Access-Control-Allow-Origin", origin)
+		w.Header().Add("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+		w.Header().Add("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding")
+		w.Header().Add("Access-Control-Allow-Credentials", "true")
+		w.Header().Add("Access-Control-Max-Age", "86400")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func AddRoutes(router *mux.Router) {
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}).Methods("OPTIONS")
+
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))

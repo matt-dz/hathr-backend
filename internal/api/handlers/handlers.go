@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"github.com/zmb3/spotify/v2"
 )
 
 func UpsertUser(w http.ResponseWriter, r *http.Request) {
@@ -53,13 +54,16 @@ func UpsertUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate auth token
-	spotifyUser, err := hathrSpotify.ValidateUserProfile(r.Header.Get("Authorization"), env, ctx)
+	spotifyUser, spotifyErr, err := hathrSpotify.AuthenticateUserToken(r.Header.Get("Authorization"), env, ctx)
 	env.Logger.DebugContext(ctx, "Validating authorization token")
 	if _, ok := err.(*url.Error); ok {
 		http.Error(w, "Failed to make validation request. Try again.", http.StatusInternalServerError)
 		return
 	} else if errors.Is(err, hathrJson.DecodeJSONError) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	} else if (spotifyErr != spotify.Error{}) {
+		http.Error(w, spotifyErr.Message, spotifyErr.Status)
 		return
 	}
 

@@ -11,7 +11,7 @@ import (
 type MonthlyPlaylist struct {
 	ID        pgtype.UUID
 	UserID    pgtype.UUID
-	Songs     []string
+	Tracks    []string
 	Year      int16
 	Month     int16
 	Name      string

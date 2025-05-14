@@ -10,7 +10,7 @@ CREATE TABLE users (
 CREATE TABLE monthly_playlists (
     id UUID DEFAULT gen_random_uuid (),
     user_id UUID,
-    songs TEXT[] NOT NULL,
+    tracks TEXT[] NOT NULL,
     year SMALLINT NOT NULL,
     month SMALLINT NOT NULL CHECK (month BETWEEN 1 and 12),
     name TEXT NOT NULL,

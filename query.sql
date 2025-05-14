@@ -7,7 +7,7 @@ ON CONFLICT (spotify_user_id)
 RETURNING id;
 
 -- name: CreateMonthlyPlaylist :one
-INSERT INTO monthly_playlists(user_id, songs, year, month, name)
+INSERT INTO monthly_playlists(user_id, tracks, year, month, name)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING id;
 

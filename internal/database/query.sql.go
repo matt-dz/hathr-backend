@@ -12,14 +12,14 @@ import (
 )
 
 const createMonthlyPlaylist = `-- name: CreateMonthlyPlaylist :one
-INSERT INTO monthly_playlists(user_id, songs, year, month, name)
+INSERT INTO monthly_playlists(user_id, tracks, year, month, name)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING id
 `
 
 type CreateMonthlyPlaylistParams struct {
 	UserID pgtype.UUID
-	Songs  []string
+	Tracks []string
 	Year   int16
 	Month  int16
 	Name   string
@@ -28,7 +28,7 @@ type CreateMonthlyPlaylistParams struct {
 func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPlaylistParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, createMonthlyPlaylist,
 		arg.UserID,
-		arg.Songs,
+		arg.Tracks,
 		arg.Year,
 		arg.Month,
 		arg.Name,
@@ -39,7 +39,7 @@ func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPl
 }
 
 const getPlaylist = `-- name: GetPlaylist :one
-SELECT id, user_id, songs, year, month, name, created_at FROM monthly_playlists WHERE id = $1
+SELECT id, user_id, tracks, year, month, name, created_at FROM monthly_playlists WHERE id = $1
 `
 
 func (q *Queries) GetPlaylist(ctx context.Context, id pgtype.UUID) (MonthlyPlaylist, error) {
@@ -48,7 +48,7 @@ func (q *Queries) GetPlaylist(ctx context.Context, id pgtype.UUID) (MonthlyPlayl
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.Songs,
+		&i.Tracks,
 		&i.Year,
 		&i.Month,
 		&i.Name,
@@ -58,7 +58,7 @@ func (q *Queries) GetPlaylist(ctx context.Context, id pgtype.UUID) (MonthlyPlayl
 }
 
 const getUserPlaylists = `-- name: GetUserPlaylists :many
-SELECT id, user_id, songs, year, month, name, created_at FROM monthly_playlists WHERE user_id = $1
+SELECT id, user_id, tracks, year, month, name, created_at FROM monthly_playlists WHERE user_id = $1
 `
 
 func (q *Queries) GetUserPlaylists(ctx context.Context, userID pgtype.UUID) ([]MonthlyPlaylist, error) {
@@ -73,7 +73,7 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, userID pgtype.UUID) ([]M
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.Songs,
+			&i.Tracks,
 			&i.Year,
 			&i.Month,
 			&i.Name,

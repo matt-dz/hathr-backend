@@ -23,7 +23,7 @@ type GetPlaylistResponse struct {
 	ID        uuid.UUID `json:"uuid" validate:"required"`
 	Tracks    []string  `json:"tracks" validate:"required"`
 	Year      int       `json:"year" validate:"required,gte=2025"`
-	Month     string    `json:"month" validate:"required"`
+	Month     Month     `json:"month" validate:"required"`
 	Name      string    `json:"name" validate:"required"`
 	CreatedAt time.Time `json:"created_at" validate:"required"`
 }

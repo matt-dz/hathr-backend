@@ -13,7 +13,7 @@ type CreateMonthlyPlaylist struct {
 	UserID uuid.UUID `json:"id" validate:"required"`
 	Tracks []string  `json:"tracks" validate:"required"`
 	Year   int       `json:"year" validate:"required,gte=2025"`
-	Month  string    `json:"month" validate:"required"`
+	Month  Month     `json:"month" validate:"required,validateFn"`
 	Name   string    `json:"name" validate:"required"`
 }
 

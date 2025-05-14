@@ -6,10 +6,12 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	hathrEnv "hathr-backend/internal/env"
 	hathrJson "hathr-backend/internal/json"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/zmb3/spotify/v2"
 )
 
@@ -17,16 +19,17 @@ const spotifyBaseURL = "https://api.spotify.com/v1/"
 
 func ValidateUserProfile(token string, env *hathrEnv.Env, ctx context.Context) (spotify.PrivateUser, error) {
 	env.Logger.DebugContext(ctx, "Creating spotify validation request")
-	req, err := http.NewRequest(http.MethodGet, spotifyBaseURL+"me", nil)
+	req, err := retryablehttp.NewRequest(http.MethodGet, spotifyBaseURL+"me", nil)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error creating request", slog.Any("error", err))
 		return spotify.PrivateUser{}, err
 	}
 	req.Header.Set("Authorization", token)
 
-	// TODO: add retries
 	env.Logger.DebugContext(ctx, "Sending request")
-	client := http.DefaultClient
+	client := retryablehttp.NewClient()
+	client.RetryWaitMax = time.Second * 10
+	client.Logger = env.Logger
 	res, err := client.Do(req)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Request failed", slog.Any("error", err))

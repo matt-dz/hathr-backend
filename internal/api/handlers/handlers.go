@@ -104,16 +104,11 @@ func UpsertUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "User IDs do not match", http.StatusUnauthorized)
 		return
 	}
-	if user.Email != requestBody.Email {
-		env.Logger.ErrorContext(ctx, "Emails do not match", slog.String("spotify_email", user.Email), slog.String("request email", requestBody.Email))
-		http.Error(w, "Emails do not match", http.StatusUnauthorized)
-		return
-	}
 
 	env.Logger.DebugContext(ctx, "Upserting user")
 	userID, err := env.Database.Queries.UpsertUser(ctx, database.UpsertUserParams{
 		SpotifyUserID: requestBody.SpotifyUserID,
-		Email:         requestBody.Email,
+		Email:         user.Email,
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error upserting user", slog.Any("error", err))

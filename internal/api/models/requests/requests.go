@@ -10,7 +10,6 @@ import (
 
 type UpsertUser struct {
 	SpotifyUserID string `json:"spotify_user_id" validate:"required"`
-	Email         string `json:"email" validate:"required,email"`
 }
 
 type CreateMonthlyPlaylist struct {

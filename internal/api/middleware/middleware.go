@@ -16,7 +16,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-const envKey = "env"
 const originURL = "https://hathr.deguzman.cloud"
 
 // Custom ResponseWriter that captures the status code
@@ -38,7 +37,7 @@ func validateOrigin(origin string) bool {
 // Handles panic recovery
 func RecoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		environment, ok := r.Context().Value(envKey).(*hathrEnv.Env)
+		environment, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
 		if !ok {
 			environment = hathrEnv.Null()
 		}
@@ -62,7 +61,7 @@ func InjectEnvironment(env *hathrEnv.Env) func(http.Handler) http.Handler {
 			if env == nil {
 				env = hathrEnv.Null()
 			}
-			r = r.WithContext(context.WithValue(r.Context(), envKey, env))
+			r = r.WithContext(context.WithValue(r.Context(), hathrEnv.Key, env))
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -71,7 +70,7 @@ func InjectEnvironment(env *hathrEnv.Env) func(http.Handler) http.Handler {
 func LogRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		environment, ok := r.Context().Value(envKey).(*hathrEnv.Env)
+		environment, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
 		if !ok {
 			environment = hathrEnv.Null()
 		}

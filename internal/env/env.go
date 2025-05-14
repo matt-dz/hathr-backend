@@ -9,6 +9,8 @@ import (
 	"log/slog"
 )
 
+const Key = "hathr-env"
+
 // Holds the dependencies for the environment
 type Env struct {
 	*slog.Logger

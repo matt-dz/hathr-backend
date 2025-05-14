@@ -18,6 +18,11 @@ type MonthlyPlaylist struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type PrivateKey struct {
+	Kid   int32
+	Value string
+}
+
 type User struct {
 	ID            pgtype.UUID
 	SpotifyUserID string

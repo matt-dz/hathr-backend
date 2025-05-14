@@ -57,6 +57,17 @@ func (q *Queries) GetPlaylist(ctx context.Context, id pgtype.UUID) (MonthlyPlayl
 	return i, err
 }
 
+const getPrivateKey = `-- name: GetPrivateKey :one
+SELECT value FROM private_keys WHERE kid = $1
+`
+
+func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) {
+	row := q.db.QueryRow(ctx, getPrivateKey, kid)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
 const getUserPlaylists = `-- name: GetUserPlaylists :many
 SELECT id, user_id, tracks, year, month, name, created_at FROM monthly_playlists WHERE user_id = $1
 `

@@ -20,3 +20,10 @@ CREATE TABLE monthly_playlists (
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     UNIQUE (user_id, year, month)
 );
+
+CREATE TABLE private_keys (
+    kid SERIAL,
+    value TEXT NOT NULL,
+
+    PRIMARY KEY (kid)
+);

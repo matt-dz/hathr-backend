@@ -16,3 +16,6 @@ SELECT * FROM monthly_playlists WHERE user_id = $1;
 
 -- name: GetPlaylist :one
 SELECT * FROM monthly_playlists WHERE id = $1;
+
+-- name: GetPrivateKey :one
+SELECT value FROM private_keys WHERE kid = $1;

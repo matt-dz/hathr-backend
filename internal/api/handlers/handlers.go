@@ -7,7 +7,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"hathr-backend/internal/api/models"
+	"hathr-backend/internal/api/models/requests"
+	"hathr-backend/internal/api/models/responses"
 	"hathr-backend/internal/database"
 	hathrEnv "hathr-backend/internal/env"
 
@@ -36,7 +37,7 @@ func UpsertUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	env.Logger.DebugContext(ctx, "Unmarshaling request body")
-	var requestBody models.UpsertUserRequest
+	var requestBody requests.UpsertUser
 	err = json.Unmarshal(body, &requestBody)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to unmarshal request body", slog.Any("error", err))
@@ -127,7 +128,7 @@ func UpsertUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(models.UpsertUserResponse{ID: parsedUUID})
+	json.NewEncoder(w).Encode(responses.UpsertUser{ID: parsedUUID})
 }
 
 func CreateMonthlyPlaylist(w http.ResponseWriter, r *http.Request) {

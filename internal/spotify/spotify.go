@@ -36,6 +36,7 @@ func LoginUser(login spotifyModels.LoginRequest, env *hathrEnv.Env, ctx context.
 		env.Logger.ErrorContext(ctx, "Error creating request", slog.Any("error", err))
 		return spotifyModels.LoginResponse{}, spotifyErrors.LoginError{}, err
 	}
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
 	// Send request
 	env.Logger.DebugContext(ctx, "Sending request")
@@ -66,8 +67,8 @@ func LoginUser(login spotifyModels.LoginRequest, env *hathrEnv.Env, ctx context.
 	return loginResponse, spotifyErrors.LoginError{}, nil
 }
 
-// Authenticate a user via their bearer token
-func AuthenticateUserToken(token string, env *hathrEnv.Env, ctx context.Context) (spotify.PrivateUser, spotify.Error, error) {
+// Get a user's profile via their access token
+func GetUserProfile(bearerToken string, env *hathrEnv.Env, ctx context.Context) (spotify.PrivateUser, spotify.Error, error) {
 
 	// Create request
 	env.Logger.DebugContext(ctx, "Creating spotify validation request")
@@ -76,7 +77,7 @@ func AuthenticateUserToken(token string, env *hathrEnv.Env, ctx context.Context)
 		env.Logger.ErrorContext(ctx, "Error creating request", slog.Any("error", err))
 		return spotify.PrivateUser{}, spotify.Error{}, err
 	}
-	req.Header.Set("Authorization", token)
+	req.Header.Set("Authorization", bearerToken)
 
 	// Send request
 	env.Logger.DebugContext(ctx, "Sending request")

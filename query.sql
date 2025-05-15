@@ -3,7 +3,7 @@ INSERT INTO users (spotify_user_id, email)
 VALUES ($1, $2)
 ON CONFLICT (spotify_user_id)
   DO UPDATE SET email = EXCLUDED.email
-RETURNING id;
+RETURNING id, refresh_token;
 
 -- name: CreateMonthlyPlaylist :one
 INSERT INTO monthly_playlists(user_id, tracks, year, month, name)
@@ -16,10 +16,16 @@ SELECT * FROM monthly_playlists WHERE user_id = $1;
 -- name: GetPlaylist :one
 SELECT * FROM monthly_playlists WHERE id = $1;
 
+-- name: GetLatestPrivateKey :one
+SELECT * FROM private_keys
+ORDER BY kid DESC
+LIMIT 1;
+
+
 -- name: GetPrivateKey :one
 SELECT value FROM private_keys WHERE kid = $1;
 
--- name: UpsertSpotifyTokens :exec
+-- name: UpsertSpotifyCredentials :exec
 INSERT INTO spotify_tokens (
   user_id,
   access_token,

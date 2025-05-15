@@ -28,12 +28,14 @@ type SpotifyToken struct {
 	AccessToken  string
 	TokenType    string
 	Scope        string
-	RefreshToken int32
+	RefreshToken string
 }
 
 type User struct {
-	ID            pgtype.UUID
-	SpotifyUserID string
-	Email         string
-	CreatedAt     pgtype.Timestamp
+	ID               pgtype.UUID
+	SpotifyUserID    string
+	Email            string
+	CreatedAt        pgtype.Timestamp
+	RefreshToken     pgtype.UUID
+	RefreshExpiresAt pgtype.Timestamp
 }

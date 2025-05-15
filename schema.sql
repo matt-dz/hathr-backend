@@ -3,6 +3,8 @@ CREATE TABLE users (
     spotify_user_id TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT now (),
+    refresh_token UUID NOT NULL DEFAULT gen_renadom_uuid (),
+    refresh_expires_at TIMESTAMP NOT NULL DEFAULT (now() + INTERVAL '1 year'),
 
     PRIMARY KEY (id)
 );
@@ -33,7 +35,7 @@ CREATE TABLE spotify_tokens (
     access_token TEXT NOT NULL,
     token_type TEXT NOT NULL,
     scope TEXT NOT NULL,
-    refresh_token INT NOT NULL,
+    refresh_token TEXT NOT NULL,
 
     PRIMARY KEY(user_id),
     FOREIGN KEY (user_id) REFERENCES users (spotify_user_id)

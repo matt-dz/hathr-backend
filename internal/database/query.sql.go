@@ -38,6 +38,19 @@ func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPl
 	return id, err
 }
 
+const getLatestPrivateKey = `-- name: GetLatestPrivateKey :one
+SELECT kid, value FROM private_keys
+ORDER BY kid DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestPrivateKey(ctx context.Context) (PrivateKey, error) {
+	row := q.db.QueryRow(ctx, getLatestPrivateKey)
+	var i PrivateKey
+	err := row.Scan(&i.Kid, &i.Value)
+	return i, err
+}
+
 const getPlaylist = `-- name: GetPlaylist :one
 SELECT id, user_id, tracks, year, month, name, created_at FROM monthly_playlists WHERE id = $1
 `
@@ -100,7 +113,7 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, userID pgtype.UUID) ([]M
 	return items, nil
 }
 
-const upsertSpotifyTokens = `-- name: UpsertSpotifyTokens :exec
+const upsertSpotifyCredentials = `-- name: UpsertSpotifyCredentials :exec
 INSERT INTO spotify_tokens (
   user_id,
   access_token,
@@ -123,16 +136,16 @@ DO UPDATE SET
   refresh_token  = EXCLUDED.refresh_token
 `
 
-type UpsertSpotifyTokensParams struct {
+type UpsertSpotifyCredentialsParams struct {
 	UserID       string
 	AccessToken  string
 	TokenType    string
 	Scope        string
-	RefreshToken int32
+	RefreshToken string
 }
 
-func (q *Queries) UpsertSpotifyTokens(ctx context.Context, arg UpsertSpotifyTokensParams) error {
-	_, err := q.db.Exec(ctx, upsertSpotifyTokens,
+func (q *Queries) UpsertSpotifyCredentials(ctx context.Context, arg UpsertSpotifyCredentialsParams) error {
+	_, err := q.db.Exec(ctx, upsertSpotifyCredentials,
 		arg.UserID,
 		arg.AccessToken,
 		arg.TokenType,
@@ -147,7 +160,7 @@ INSERT INTO users (spotify_user_id, email)
 VALUES ($1, $2)
 ON CONFLICT (spotify_user_id)
   DO UPDATE SET email = EXCLUDED.email
-RETURNING id
+RETURNING id, refresh_token
 `
 
 type UpsertUserParams struct {
@@ -155,9 +168,14 @@ type UpsertUserParams struct {
 	Email         string
 }
 
-func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (pgtype.UUID, error) {
+type UpsertUserRow struct {
+	ID           pgtype.UUID
+	RefreshToken pgtype.UUID
+}
+
+func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (UpsertUserRow, error) {
 	row := q.db.QueryRow(ctx, upsertUser, arg.SpotifyUserID, arg.Email)
-	var id pgtype.UUID
-	err := row.Scan(&id)
-	return id, err
+	var i UpsertUserRow
+	err := row.Scan(&i.ID, &i.RefreshToken)
+	return i, err
 }

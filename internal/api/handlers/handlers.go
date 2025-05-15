@@ -5,6 +5,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -14,12 +15,14 @@ import (
 	"hathr-backend/internal/database"
 	hathrEnv "hathr-backend/internal/env"
 	hathrJson "hathr-backend/internal/json"
+	"hathr-backend/internal/jwt"
 	hathrSpotify "hathr-backend/internal/spotify"
 	spotifyErrors "hathr-backend/internal/spotify/errors"
 	spotifyModels "hathr-backend/internal/spotify/models"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/zmb3/spotify/v2"
 )
 
@@ -65,8 +68,80 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Upload credentials to DB
+	// Retrieve spotify user
+	spotifyUser, spotifyErr, err := hathrSpotify.GetUserProfile(r.Header.Get("Authorization"), env, ctx)
+	env.Logger.DebugContext(ctx, "Retrieving user profile")
+	if _, ok := err.(*url.Error); ok {
+		http.Error(w, "Failed to make validation request. Try again.", http.StatusInternalServerError)
+		return
+	} else if errors.Is(err, hathrJson.DecodeJSONError) {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	} else if (spotifyErr != spotify.Error{}) {
+		http.Error(w, spotifyErr.Message, spotifyErr.Status)
+		return
+	}
 
+	// Insert user into DB
+	env.Logger.DebugContext(ctx, "Upserting user")
+	dbUser, err := env.Database.UpsertUser(ctx, database.UpsertUserParams{
+		SpotifyUserID: spotifyUser.ID,
+		Email:         spotifyUser.Email,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to upsert user", slog.Any("error", err))
+		http.Error(w, "Error inserting user into database", http.StatusInternalServerError)
+		return
+	}
+
+	// Upload credentials to DB
+	env.Logger.DebugContext(ctx, "Uploading credentials to DB")
+	err = env.Database.UpsertSpotifyCredentials(ctx, database.UpsertSpotifyCredentialsParams{
+		UserID:       spotifyUser.ID,
+		AccessToken:  loginRes.AccessToken,
+		TokenType:    loginRes.TokenType,
+		Scope:        loginRes.Scope,
+		RefreshToken: loginRes.RefreshToken,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to upload credentials to DB", slog.Any("error", err))
+		http.Error(w, "Error uploading credentials", http.StatusInternalServerError)
+		return
+	}
+
+	// Retrieve private key for JWT signing
+	env.Logger.DebugContext(ctx, "Retrieving private key")
+	key, err := env.Database.GetLatestPrivateKey(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.Logger.ErrorContext(ctx, "No private key to retrieve", slog.Any("error", err))
+		http.Error(w, "No private key to retrieve", http.StatusInternalServerError)
+		return
+	} else if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to retrieve private key", slog.Any("error", err))
+		http.Error(w, "Unable to retrieve private key", http.StatusInternalServerError)
+		return
+	}
+
+	// Create JWT for user
+	env.Logger.DebugContext(ctx, "Creating JWT")
+	signedJWT, err := jwt.CreateJWT(dbUser.ID.String(), false, []byte(key.Value))
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
+		http.Error(w, "Unable to create JWT", http.StatusInternalServerError)
+		return
+	}
+
+	// Return JWT and refresh token
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Add("Authorization", fmt.Sprintf("Bearer: %s", signedJWT))
+	err = json.NewEncoder(w).Encode(responses.LoginUser{
+		RefreshToken: dbUser.RefreshToken.String(),
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode response", slog.Any("error", err))
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func UpsertUser(w http.ResponseWriter, r *http.Request) {
@@ -102,7 +177,7 @@ func UpsertUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate auth token
-	spotifyUser, spotifyErr, err := hathrSpotify.AuthenticateUserToken(r.Header.Get("Authorization"), env, ctx)
+	spotifyUser, spotifyErr, err := hathrSpotify.GetUserProfile(r.Header.Get("Authorization"), env, ctx)
 	env.Logger.DebugContext(ctx, "Validating authorization token")
 	if _, ok := err.(*url.Error); ok {
 		http.Error(w, "Failed to make validation request. Try again.", http.StatusInternalServerError)
@@ -136,7 +211,7 @@ func UpsertUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Encode request
-	parsedUUID, err := uuid.ParseBytes(userID.Bytes[:])
+	parsedUUID, err := uuid.ParseBytes(userID.ID.Bytes[:])
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error parsing user id", slog.Any("error", err))
 		http.Error(w, "Error parsing user id", http.StatusInternalServerError)

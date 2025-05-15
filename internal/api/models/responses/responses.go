@@ -11,6 +11,10 @@ import (
 	"github.com/google/uuid"
 )
 
+type LoginUser struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
 type UpsertUser struct {
 	ID uuid.UUID `json:"id" validate:"required"`
 }

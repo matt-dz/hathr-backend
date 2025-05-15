@@ -207,7 +207,6 @@ func AddRoutes(router *mux.Router) {
 	}).Methods("GET")
 
 	s.HandleFunc("/login", handlers.Login).Methods("POST")
-	s.HandleFunc("/user", handlers.UpsertUser).Methods("POST")
 
 	playlists := s.PathPrefix("/playlists").Subrouter()
 	playlists.Use(AuthorizeRequest)

@@ -14,12 +14,15 @@ import (
 	"hathr-backend/internal/database"
 	hathrEnv "hathr-backend/internal/env"
 	hathrJson "hathr-backend/internal/json"
-	"hathr-backend/internal/jwt"
+	hathrJWT "hathr-backend/internal/jwt"
 	hathrSpotify "hathr-backend/internal/spotify"
 	spotifyErrors "hathr-backend/internal/spotify/errors"
 	spotifyModels "hathr-backend/internal/spotify/models"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
 	"github.com/zmb3/spotify/v2"
 )
@@ -125,7 +128,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT for user
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	signedJWT, err := jwt.CreateJWT(dbUser.ID.String(), false, []byte(key.Value))
+	signedJWT, err := hathrJWT.CreateJWT(dbUser.ID.String(), false, []byte(key.Value))
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, "Unable to create JWT", http.StatusInternalServerError)
@@ -151,8 +154,67 @@ func CreateMonthlyPlaylist(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve JWT
+	env.Logger.DebugContext(ctx, "Retrieving JWT token from context")
+	token, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Unable to retrieve JWT token from context")
+		http.Error(w, "Failed to retrieve JWT token", http.StatusInternalServerError)
+		return
+	}
+
+	// Retrieve user ID from JWT
+	env.Logger.DebugContext(ctx, "Retrieving user ID from JWT token")
+	userID, err := token.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get subject from JWT token", slog.Any("error", err))
+		http.Error(w, "Failed to get subject from JWT token", http.StatusUnauthorized)
+		return
+	}
+
+	// Compare user ID from JWT with request user ID
+	env.Logger.DebugContext(ctx, "Comparing user ID from JWT with request user ID")
+	vars := mux.Vars(r)
+	requestUserID := vars["user_id"]
+	if userID != requestUserID {
+		env.Logger.ErrorContext(ctx, "User ID mismatch", slog.Any("userID", userID), slog.Any("requestUserID", requestUserID))
+		http.Error(w, "User ID mismatch", http.StatusForbidden)
+		return
+	}
+
+	// Get user playlists
+	if err := uuid.Validate(userID); err != nil { // sanity check
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	env.Logger.DebugContext(ctx, "Getting user playlists")
+	playlists, err := env.Database.GetUserPlaylists(ctx, uuid.MustParse(userID))
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user playlists", slog.Any("error", err))
+		http.Error(w, "Failed to get user playlists", http.StatusInternalServerError)
+		return
+	}
+
+	// Serialize playlists to JSON
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(responses.GetUserPlaylists{
+		Playlists: playlists,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode user playlists", slog.Any("error", err))
+		http.Error(w, "Failed to encode user playlists", http.StatusInternalServerError)
+		return
+	}
+
 }
 
 func GetPlaylist(w http.ResponseWriter, r *http.Request) {

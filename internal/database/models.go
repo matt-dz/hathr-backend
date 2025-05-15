@@ -5,12 +5,13 @@
 package database
 
 import (
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type MonthlyPlaylist struct {
-	ID        pgtype.UUID
-	UserID    pgtype.UUID
+	ID        uuid.UUID
+	UserID    uuid.UUID
 	Tracks    []string
 	Year      int16
 	Month     int16
@@ -32,10 +33,10 @@ type SpotifyToken struct {
 }
 
 type User struct {
-	ID               pgtype.UUID
+	ID               uuid.UUID
 	SpotifyUserID    string
 	Email            string
 	CreatedAt        pgtype.Timestamp
-	RefreshToken     pgtype.UUID
+	RefreshToken     uuid.UUID
 	RefreshExpiresAt pgtype.Timestamp
 }

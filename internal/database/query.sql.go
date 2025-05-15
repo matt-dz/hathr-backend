@@ -8,7 +8,7 @@ package database
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 const createMonthlyPlaylist = `-- name: CreateMonthlyPlaylist :one
@@ -18,14 +18,14 @@ RETURNING id
 `
 
 type CreateMonthlyPlaylistParams struct {
-	UserID pgtype.UUID
+	UserID uuid.UUID
 	Tracks []string
 	Year   int16
 	Month  int16
 	Name   string
 }
 
-func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPlaylistParams) (pgtype.UUID, error) {
+func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPlaylistParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, createMonthlyPlaylist,
 		arg.UserID,
 		arg.Tracks,
@@ -33,7 +33,7 @@ func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPl
 		arg.Month,
 		arg.Name,
 	)
-	var id pgtype.UUID
+	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
 }
@@ -55,7 +55,7 @@ const getPlaylist = `-- name: GetPlaylist :one
 SELECT id, user_id, tracks, year, month, name, created_at FROM monthly_playlists WHERE id = $1
 `
 
-func (q *Queries) GetPlaylist(ctx context.Context, id pgtype.UUID) (MonthlyPlaylist, error) {
+func (q *Queries) GetPlaylist(ctx context.Context, id uuid.UUID) (MonthlyPlaylist, error) {
 	row := q.db.QueryRow(ctx, getPlaylist, id)
 	var i MonthlyPlaylist
 	err := row.Scan(
@@ -85,7 +85,7 @@ const getUserPlaylists = `-- name: GetUserPlaylists :many
 SELECT id, user_id, tracks, year, month, name, created_at FROM monthly_playlists WHERE user_id = $1
 `
 
-func (q *Queries) GetUserPlaylists(ctx context.Context, userID pgtype.UUID) ([]MonthlyPlaylist, error) {
+func (q *Queries) GetUserPlaylists(ctx context.Context, userID uuid.UUID) ([]MonthlyPlaylist, error) {
 	rows, err := q.db.Query(ctx, getUserPlaylists, userID)
 	if err != nil {
 		return nil, err
@@ -169,8 +169,8 @@ type UpsertUserParams struct {
 }
 
 type UpsertUserRow struct {
-	ID           pgtype.UUID
-	RefreshToken pgtype.UUID
+	ID           uuid.UUID
+	RefreshToken uuid.UUID
 }
 
 func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (UpsertUserRow, error) {

@@ -14,7 +14,7 @@ CREATE TABLE monthly_playlists (
     user_id UUID,
     tracks TEXT[] NOT NULL,
     year SMALLINT NOT NULL,
-    month SMALLINT NOT NULL CHECK (month BETWEEN 1 and 12),
+    month SMALLINT NOT NULL CHECK (month BETWEEN 0 and 11),
     name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now (),
 

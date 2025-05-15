@@ -8,7 +8,7 @@ import (
 
 type Month string
 
-var months = []Month{
+var months = [12]Month{
 	"january",
 	"february",
 	"march",
@@ -25,10 +25,14 @@ var months = []Month{
 
 func (m Month) Validate() error {
 	fmtMonth := Month(strings.ToLower(string(m)))
-	if !slices.Contains(months, fmtMonth) {
+	if !slices.Contains(months[:], fmtMonth) {
 		return fmt.Errorf("Invalid month: %s", m)
 	}
 	return nil
+}
+
+func (m Month) Index() int {
+	return slices.Index(months[:], Month(strings.ToLower(string(m))))
 }
 
 func GetMonth(m int) (Month, error) {

@@ -52,11 +52,17 @@ func (q *Queries) GetLatestPrivateKey(ctx context.Context) (PrivateKey, error) {
 }
 
 const getPlaylist = `-- name: GetPlaylist :one
-SELECT id, user_id, tracks, year, month, name, created_at FROM monthly_playlists WHERE id = $1
+SELECT id, user_id, tracks, year, month, name, created_at FROM monthly_playlists WHERE user_id = $1 AND year = $2 AND month = $3
 `
 
-func (q *Queries) GetPlaylist(ctx context.Context, id uuid.UUID) (MonthlyPlaylist, error) {
-	row := q.db.QueryRow(ctx, getPlaylist, id)
+type GetPlaylistParams struct {
+	UserID uuid.UUID
+	Year   int16
+	Month  int16
+}
+
+func (q *Queries) GetPlaylist(ctx context.Context, arg GetPlaylistParams) (MonthlyPlaylist, error) {
+	row := q.db.QueryRow(ctx, getPlaylist, arg.UserID, arg.Year, arg.Month)
 	var i MonthlyPlaylist
 	err := row.Scan(
 		&i.ID,

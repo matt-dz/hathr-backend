@@ -199,6 +199,38 @@ func AuthorizeAdminRequest(next http.Handler) http.Handler {
 	})
 }
 
+func MatchUserIDs(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+		if !ok {
+			env = hathrEnv.Null()
+		}
+
+		token, ok := r.Context().Value("jwt").(*jwt.Token)
+		if !ok {
+			env.Logger.ErrorContext(r.Context(), "Failed to get JWT claims")
+			http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+			return
+		}
+
+		userID, err := token.Claims.GetSubject()
+		if err != nil {
+			env.Logger.ErrorContext(r.Context(), "Failed to get user ID from JWT claims")
+			http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+			return
+		}
+
+		if userID != mux.Vars(r)["user_id"] {
+			env.Logger.ErrorContext(r.Context(), "User ID mismatch")
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+
+		env.Logger.DebugContext(r.Context(), "User ID matched")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func AddRoutes(router *mux.Router) {
 	s := router.PathPrefix("/api").Subrouter()
 	s.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -210,10 +242,12 @@ func AddRoutes(router *mux.Router) {
 
 	playlists := s.PathPrefix("/playlists").Subrouter()
 	playlists.Use(AuthorizeRequest)
+	playlists.Use(MatchUserIDs)
 	playlists.HandleFunc("/{user_id}", handlers.GetUserPlaylists).Methods("GET")
-	playlists.HandleFunc("/{user_id}/{year:[0-9]+}/{month:[a-zA-z]+}", handlers.GetPlaylist).Methods("GET")
+	playlists.HandleFunc("/{user_id}/{year}/{month}", handlers.GetPlaylist).Methods("GET")
 
 	playlist := s.PathPrefix("/playlist").Subrouter()
+	playlist.Use(AuthorizeRequest)
 	playlist.Use(AuthorizeAdminRequest)
 	playlist.HandleFunc("/", handlers.CreateMonthlyPlaylist).Methods("POST")
 }

@@ -9,7 +9,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 
+	"hathr-backend/internal/api/models"
 	"hathr-backend/internal/api/models/responses"
 	"hathr-backend/internal/database"
 	hathrEnv "hathr-backend/internal/env"
@@ -20,7 +22,6 @@ import (
 	spotifyModels "hathr-backend/internal/spotify/models"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
@@ -160,35 +161,8 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 		env = hathrEnv.Null()
 	}
 
-	// Retrieve JWT
-	env.Logger.DebugContext(ctx, "Retrieving JWT token from context")
-	token, ok := ctx.Value("jwt").(*jwt.Token)
-	if !ok {
-		env.Logger.ErrorContext(ctx, "Unable to retrieve JWT token from context")
-		http.Error(w, "Failed to retrieve JWT token", http.StatusInternalServerError)
-		return
-	}
-
-	// Retrieve user ID from JWT
-	env.Logger.DebugContext(ctx, "Retrieving user ID from JWT token")
-	userID, err := token.Claims.GetSubject()
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to get subject from JWT token", slog.Any("error", err))
-		http.Error(w, "Failed to get subject from JWT token", http.StatusUnauthorized)
-		return
-	}
-
-	// Compare user ID from JWT with request user ID
-	env.Logger.DebugContext(ctx, "Comparing user ID from JWT with request user ID")
-	vars := mux.Vars(r)
-	requestUserID := vars["user_id"]
-	if userID != requestUserID {
-		env.Logger.ErrorContext(ctx, "User ID mismatch", slog.Any("userID", userID), slog.Any("requestUserID", requestUserID))
-		http.Error(w, "User ID mismatch", http.StatusForbidden)
-		return
-	}
-
 	// Get user playlists
+	userID := mux.Vars(r)["user_id"]
 	if err := uuid.Validate(userID); err != nil { // sanity check
 		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
@@ -218,6 +192,77 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetPlaylist(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	userID, requestMonth := mux.Vars(r)["user_id"], mux.Vars(r)["month"]
+	year, err := strconv.Atoi(mux.Vars(r)["year"])
+	if err != nil {
+		env.ErrorContext(ctx, "Cannot convert year to integer", slog.Any("error", err))
+		http.Error(w, "Invalid year", http.StatusBadRequest)
+		return
+	}
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if int(int16(year)) != year {
+		env.ErrorContext(ctx, "Year is too large")
+		http.Error(w, "Year is too large", http.StatusBadRequest)
+		return
+	}
+	month := models.Month(requestMonth)
+	if err := month.Validate(); err != nil {
+		env.ErrorContext(ctx, "Invalid month", slog.Any("error", err))
+		http.Error(w, "Invalid month: "+requestMonth, http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(userID); err != nil {
+		env.ErrorContext(ctx, "Invalid userID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Retrieve playlist
+	env.Logger.DebugContext(ctx, "Retrieving playlist")
+	playlist, err := env.Database.Queries.GetPlaylist(ctx, database.GetPlaylistParams{
+		UserID: uuid.MustParse(userID),
+		Year:   int16(year),
+		Month:  int16(month.Index()),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.ErrorContext(ctx, "No playlist found", slog.Any("error", err))
+		http.Error(w, "No playlist found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		env.ErrorContext(ctx, "Unsuccessful query", slog.Any("error", err))
+		http.Error(w, "Unable to retrieve playlist", http.StatusInternalServerError)
+		return
+	}
+
+	// Encoding response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	playlistMonth, err := models.GetMonth(int(playlist.Month))
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid month", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(responses.GetPlaylist{
+		ID:        playlist.ID,
+		Tracks:    playlist.Tracks,
+		Year:      int(playlist.Year),
+		Month:     playlistMonth,
+		Name:      playlist.Name,
+		CreatedAt: playlist.CreatedAt.Time,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))
+		http.Error(w, "Unable to encode response", http.StatusInternalServerError)
+	}
 }

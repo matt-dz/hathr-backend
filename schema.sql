@@ -27,3 +27,15 @@ CREATE TABLE private_keys (
 
     PRIMARY KEY (kid)
 );
+
+CREATE TABLE spotify_tokens (
+    user_id TEXT NOT NULL,
+    access_token TEXT NOT NULL,
+    token_type TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    refresh_token INT NOT NULL,
+
+    PRIMARY KEY(user_id),
+    FOREIGN KEY (user_id) REFERENCES users (spotify_user_id)
+        ON DELETE CASCADE
+);

@@ -19,3 +19,25 @@ SELECT * FROM monthly_playlists WHERE id = $1;
 
 -- name: GetPrivateKey :one
 SELECT value FROM private_keys WHERE kid = $1;
+
+-- name: UpsertSpotifyTokens :exec
+INSERT INTO spotify_tokens (
+  user_id,
+  access_token,
+  token_type,
+  scope,
+  refresh_token
+)
+VALUES (
+  $1,
+  $2,
+  $3,
+  $4,
+  $5
+)
+ON CONFLICT (user_id)
+DO UPDATE SET
+  access_token   = EXCLUDED.access_token,
+  token_type     = EXCLUDED.token_type,
+  scope          = EXCLUDED.scope,
+  refresh_token  = EXCLUDED.refresh_token;

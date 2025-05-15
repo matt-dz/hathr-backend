@@ -118,6 +118,7 @@ func AddRoutes(router *mux.Router) {
 		w.Write([]byte("OK"))
 	}).Methods("GET")
 
+	router.HandleFunc("/login", handlers.Login).Methods("POST")
 	router.HandleFunc("/user", handlers.UpsertUser).Methods("POST")
 	router.HandleFunc("/playlists/{user_id}", handlers.GetUserPlaylists).Methods("GET")
 	router.HandleFunc("/playlist/{id}", handlers.GetPlaylist).Methods("GET")

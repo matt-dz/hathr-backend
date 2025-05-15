@@ -23,6 +23,14 @@ type PrivateKey struct {
 	Value string
 }
 
+type SpotifyToken struct {
+	UserID       string
+	AccessToken  string
+	TokenType    string
+	Scope        string
+	RefreshToken int32
+}
+
 type User struct {
 	ID            pgtype.UUID
 	SpotifyUserID string

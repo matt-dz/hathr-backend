@@ -100,6 +100,48 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, userID pgtype.UUID) ([]M
 	return items, nil
 }
 
+const upsertSpotifyTokens = `-- name: UpsertSpotifyTokens :exec
+INSERT INTO spotify_tokens (
+  user_id,
+  access_token,
+  token_type,
+  scope,
+  refresh_token
+)
+VALUES (
+  $1,
+  $2,
+  $3,
+  $4,
+  $5
+)
+ON CONFLICT (user_id)
+DO UPDATE SET
+  access_token   = EXCLUDED.access_token,
+  token_type     = EXCLUDED.token_type,
+  scope          = EXCLUDED.scope,
+  refresh_token  = EXCLUDED.refresh_token
+`
+
+type UpsertSpotifyTokensParams struct {
+	UserID       string
+	AccessToken  string
+	TokenType    string
+	Scope        string
+	RefreshToken int32
+}
+
+func (q *Queries) UpsertSpotifyTokens(ctx context.Context, arg UpsertSpotifyTokensParams) error {
+	_, err := q.db.Exec(ctx, upsertSpotifyTokens,
+		arg.UserID,
+		arg.AccessToken,
+		arg.TokenType,
+		arg.Scope,
+		arg.RefreshToken,
+	)
+	return err
+}
+
 const upsertUser = `-- name: UpsertUser :one
 INSERT INTO users (spotify_user_id, email)
 VALUES ($1, $2)

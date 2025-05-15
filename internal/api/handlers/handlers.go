@@ -15,11 +15,59 @@ import (
 	hathrEnv "hathr-backend/internal/env"
 	hathrJson "hathr-backend/internal/json"
 	hathrSpotify "hathr-backend/internal/spotify"
+	spotifyErrors "hathr-backend/internal/spotify/errors"
+	spotifyModels "hathr-backend/internal/spotify/models"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/zmb3/spotify/v2"
 )
+
+func Login(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Decode request payload
+	env.Logger.DebugContext(ctx, "Decoding request body")
+	var loginRequest spotifyModels.LoginRequest
+	err := hathrJson.DecodeJson(&loginRequest, r.Body)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate payload
+	env.Logger.DebugContext(ctx, "Validating request body")
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	err = validate.Struct(loginRequest)
+	if _, ok := err.(*validator.ValidationErrors); ok {
+		env.Logger.ErrorContext(ctx, "Invalid request body", slog.Any("error", err))
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	} else if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
+		http.Error(w, "Failed to validate request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Login user
+	loginRes, loginErr, err := hathrSpotify.LoginUser(loginRequest, env, ctx)
+	if err != nil {
+		http.Error(w, "Unable to login", http.StatusInternalServerError)
+		return
+	} else if loginErr != (spotifyErrors.LoginError{}) {
+		http.Error(w, loginErr.Status, loginErr.StatusCode)
+		return
+	}
+
+	// Upload credentials to DB
+
+}
 
 func UpsertUser(w http.ResponseWriter, r *http.Request) {
 

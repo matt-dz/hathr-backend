@@ -146,8 +146,7 @@ const upsertUser = `-- name: UpsertUser :one
 INSERT INTO users (spotify_user_id, email)
 VALUES ($1, $2)
 ON CONFLICT (spotify_user_id)
-  DO UPDATE
-    SET users.email = email
+  DO UPDATE SET email = EXCLUDED.email
 RETURNING id
 `
 

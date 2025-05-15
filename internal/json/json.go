@@ -12,13 +12,10 @@ import (
 var DecodeJSONError = errors.New("DecodeJSONError")
 
 // Decode a single JSON object
-func DecodeJson(dst interface{}, r io.ReadCloser) error {
-	decoder := json.NewDecoder(r)
-	decoder.DisallowUnknownFields()
+func DecodeJson(dst interface{}, decoder *json.Decoder) error {
 	if err := decoder.Decode(dst); err != nil {
 		return errors.Join(DecodeJSONError, err)
 	}
-	defer r.Close()
 
 	// Ensure no extra tokens after decoding
 	var dud interface{}

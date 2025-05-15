@@ -7,12 +7,15 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"hathr-backend/internal/api/handlers"
 	hathrEnv "hathr-backend/internal/env"
+	hathrJwt "hathr-backend/internal/jwt"
 	"hathr-backend/internal/logging"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 )
 
@@ -67,6 +70,7 @@ func InjectEnvironment(env *hathrEnv.Env) func(http.Handler) http.Handler {
 	}
 }
 
+// Logs API request
 func LogRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -90,6 +94,7 @@ func LogRequest(next http.Handler) http.Handler {
 	})
 }
 
+// Adds CORS policy
 func HandleCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		/* If origin is not in allow list, do not add CORS headers */
@@ -107,20 +112,109 @@ func HandleCORS(next http.Handler) http.Handler {
 	})
 }
 
-func AddRoutes(router *mux.Router) {
-	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	}).Methods("OPTIONS")
+// Authorized request via JWT
+func AuthorizeRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+		if !ok {
+			env = hathrEnv.Null()
+		}
 
-	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		authToken := r.Header.Get("Authorization")
+		rawJWT, found := strings.CutPrefix(authToken, "Bearer ")
+		if !found {
+			http.Error(w, "Auth token should be formatted as \"Bearer [token]\"", http.StatusUnauthorized)
+		}
+
+		env.Logger.DebugContext(r.Context(), "Validating JWT")
+		token, err := hathrJwt.ValidateJWT(rawJWT)
+		if err != nil {
+			env.Logger.ErrorContext(r.Context(), "Invalid JWT", slog.Any("error", err))
+			http.Error(w, "Invalid JWT", http.StatusUnauthorized)
+			return
+		}
+
+		if !token.Valid {
+			env.Logger.ErrorContext(r.Context(), "Invalid JWT")
+			http.Error(w, "Invalid JWT", http.StatusUnauthorized)
+			return
+		}
+
+		env.Logger.DebugContext(r.Context(), "Checking JWT expiration")
+		expiration, err := token.Claims.GetExpirationTime()
+		if err != nil {
+			env.Logger.ErrorContext(r.Context(), "Failed to get expiration time", slog.Any("error", err))
+			http.Error(w, "Invalid exp field in JWT", http.StatusBadRequest)
+			return
+		}
+
+		if expiration.Before(time.Now()) {
+			http.Error(w, "Token expired", http.StatusUnauthorized)
+			return
+		}
+
+		env.Logger.DebugContext(r.Context(), "Successfully validated JWT")
+		r = r.WithContext(context.WithValue(r.Context(), "jwt", token))
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Ensures admin claim is present and true in JWT
+func AuthorizeAdminRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+		if !ok {
+			env = hathrEnv.Null()
+		}
+
+		token, ok := r.Context().Value("jwt").(*jwt.Token)
+		if !ok {
+			env.Logger.ErrorContext(r.Context(), "Failed to get JWT claims")
+			http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+			return
+		}
+
+		env.Logger.DebugContext(r.Context(), "Authenticating user as an admin")
+		mapClaims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			env.Logger.ErrorContext(r.Context(), "Failed to get JWT claims")
+			http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+			return
+		}
+
+		isAdmin, ok := mapClaims["admin"].(bool)
+		if !ok {
+			env.Logger.ErrorContext(r.Context(), "Failed to get admin claim")
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+		if !isAdmin {
+			env.Logger.ErrorContext(r.Context(), "User is not an admin")
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+
+		env.Logger.DebugContext(r.Context(), "User successfully authenticated as an admin")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func AddRoutes(router *mux.Router) {
+	s := router.PathPrefix("/api").Subrouter()
+	s.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods("GET")
 
-	router.HandleFunc("/login", handlers.Login).Methods("POST")
-	router.HandleFunc("/user", handlers.UpsertUser).Methods("POST")
-	router.HandleFunc("/playlists/{user_id}", handlers.GetUserPlaylists).Methods("GET")
-	router.HandleFunc("/playlist/{id}", handlers.GetPlaylist).Methods("GET")
-	router.HandleFunc("/playlist", handlers.CreateMonthlyPlaylist).Methods("POST")
+	s.HandleFunc("/login", handlers.Login).Methods("POST")
+	s.HandleFunc("/user", handlers.UpsertUser).Methods("POST")
+
+	playlists := s.PathPrefix("/playlists").Subrouter()
+	playlists.Use(AuthorizeRequest)
+	playlists.HandleFunc("/{user_id}", handlers.GetUserPlaylists).Methods("GET")
+	playlists.HandleFunc("/{user_id}/{year:[0-9]+}/{month:[a-zA-z]+}", handlers.GetPlaylist).Methods("GET")
+
+	playlist := s.PathPrefix("/playlist").Subrouter()
+	playlist.Use(AuthorizeAdminRequest)
+	playlist.HandleFunc("/", handlers.CreateMonthlyPlaylist).Methods("POST")
 }

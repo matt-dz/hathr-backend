@@ -37,7 +37,10 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	// Decode request payload
 	env.Logger.DebugContext(ctx, "Decoding request body")
 	var loginRequest spotifyModels.LoginRequest
-	err := hathrJson.DecodeJson(&loginRequest, r.Body)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
+	err := hathrJson.DecodeJson(&loginRequest, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -155,7 +158,10 @@ func UpsertUser(w http.ResponseWriter, r *http.Request) {
 	// Decode request payload
 	env.Logger.DebugContext(ctx, "Decoding request body")
 	var requestBody requests.UpsertUser
-	err := hathrJson.DecodeJson(&requestBody, r.Body)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
+	err := hathrJson.DecodeJson(&requestBody, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
 		http.Error(w, err.Error(), http.StatusBadRequest)

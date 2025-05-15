@@ -4,6 +4,7 @@ package spotify
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -58,7 +59,10 @@ func LoginUser(login spotifyModels.LoginRequest, env *hathrEnv.Env, ctx context.
 	// Decode response
 	env.Logger.DebugContext(ctx, "Decoding spotify validation response")
 	var loginResponse spotifyModels.LoginResponse
-	err = hathrJson.DecodeJson(&loginResponse, res.Body)
+	decoder := json.NewDecoder(res.Body)
+	decoder.DisallowUnknownFields()
+	defer res.Body.Close()
+	err = hathrJson.DecodeJson(&loginResponse, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error decoding response", slog.Any("error", err))
 		return spotifyModels.LoginResponse{}, spotifyErrors.LoginError{}, err
@@ -94,7 +98,10 @@ func GetUserProfile(bearerToken string, env *hathrEnv.Env, ctx context.Context) 
 	if res.StatusCode != http.StatusOK {
 		env.Logger.ErrorContext(ctx, "Unsuccessful request", slog.Any("error", err))
 		var spotifyErr spotify.Error
-		err = hathrJson.DecodeJson(&spotifyErr, res.Body)
+		decoder := json.NewDecoder(res.Body)
+		decoder.DisallowUnknownFields()
+		defer res.Body.Close()
+		err = hathrJson.DecodeJson(&spotifyErr, decoder)
 		if err != nil {
 			return spotify.PrivateUser{}, spotifyErr, nil
 		}
@@ -103,7 +110,10 @@ func GetUserProfile(bearerToken string, env *hathrEnv.Env, ctx context.Context) 
 	// Decode response
 	env.Logger.DebugContext(ctx, "Decoding spotify validation response")
 	var user spotify.PrivateUser
-	err = hathrJson.DecodeJson(&user, res.Body)
+	decoder := json.NewDecoder(res.Body)
+	decoder.DisallowUnknownFields()
+	defer res.Body.Close()
+	err = hathrJson.DecodeJson(&user, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error decoding response", slog.Any("error", err))
 		return spotify.PrivateUser{}, spotify.Error{}, err

@@ -55,13 +55,9 @@ func main() {
 		port = defaultPort
 	}
 	router := mux.NewRouter()
-	router.Use(middleware.HandleCORS)
-	router.Use(middleware.RecoverMiddleware)
-	router.Use(middleware.InjectEnvironment(env))
-	router.Use(middleware.LogRequest)
-	middleware.AddRoutes(router)
+	middleware.AddRoutes(router, env)
 
-	logger.Info("Serving at " + "0.0.0.0:" + port)
+	logger.Info("Serving at " + "127.0.0.1:" + port)
 	http.Handle("/", router)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

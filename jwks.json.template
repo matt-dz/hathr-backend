@@ -1,0 +1,12 @@
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "n": "<your_n_value>"
+      "e": "<your_e_value>",
+      "alg": "RS256",
+      "kid": "1",
+      "use": "sig"
+    }
+  ]
+}

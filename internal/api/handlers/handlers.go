@@ -41,7 +41,7 @@ func ServeOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"client_id":    os.Getenv("SPOTIFY_CLIENT_ID"),
 		"redirect_uri": os.Getenv("SPOTIFY_REDIRECT_URI"),
-		"scopes":       "user-read-private user-read-email user-library-read user-top-read user-read-recently-played",
+		"scope":        "user-read-private user-read-email user-library-read user-top-read user-read-recently-played",
 	})
 }
 
@@ -81,6 +81,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Login user
+	env.Logger.DebugContext(ctx, "Logging in user")
 	loginRes, loginErr, err := hathrSpotify.LoginUser(loginRequest, env, ctx)
 	if err != nil {
 		http.Error(w, "Unable to login", http.StatusInternalServerError)
@@ -89,26 +90,41 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, loginErr.Status, loginErr.StatusCode)
 		return
 	}
+	env.Logger.DebugContext(ctx, "Successfully logged in")
 
 	// Retrieve spotify user
-	spotifyUser, spotifyErr, err := hathrSpotify.GetUserProfile(r.Header.Get("Authorization"), env, ctx)
 	env.Logger.DebugContext(ctx, "Retrieving user profile")
+	spotifyUser, spotifyErr, err := hathrSpotify.GetUserProfile(fmt.Sprintf("Bearer %s", loginRes.AccessToken), env, ctx)
 	if _, ok := err.(*url.Error); ok {
 		http.Error(w, "Failed to make validation request. Try again.", http.StatusInternalServerError)
 		return
 	} else if errors.Is(err, hathrJson.DecodeJSONError) {
+		env.Logger.ErrorContext(ctx, "Failed to decode response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	} else if (spotifyErr != spotify.Error{}) {
+		env.Logger.ErrorContext(ctx, "Received spotify error", slog.Any("error", spotifyErr))
 		http.Error(w, spotifyErr.Message, spotifyErr.Status)
+		return
+	} else if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed request", slog.Any("error", err))
+		http.Error(w, "Unable to retrieve user profile", http.StatusInternalServerError)
 		return
 	}
 
 	// Insert user into DB
+	env.Logger.DebugContext(ctx, "Marshaling user data")
+	marshaledUser, err := json.Marshal(spotifyUser)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to marshal user data", slog.Any("error", err))
+		http.Error(w, "Unable to marshal user data", http.StatusInternalServerError)
+		return
+	}
 	env.Logger.DebugContext(ctx, "Upserting user")
 	dbUser, err := env.Database.UpsertUser(ctx, database.UpsertUserParams{
-		SpotifyUserID: spotifyUser.ID,
-		Email:         spotifyUser.Email,
+		SpotifyUserID:   spotifyUser.ID,
+		Email:           spotifyUser.Email,
+		SpotifyUserData: marshaledUser,
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to upsert user", slog.Any("error", err))
@@ -153,17 +169,9 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return JWT and refresh token
+	// Return JWT
 	env.Logger.DebugContext(ctx, "Encoding response")
-	w.Header().Add("Authorization", fmt.Sprintf("Bearer: %s", signedJWT))
-	err = json.NewEncoder(w).Encode(responses.LoginUser{
-		RefreshToken: dbUser.RefreshToken.String(),
-	})
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to encode response", slog.Any("error", err))
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	w.Header().Add("Authorization", fmt.Sprintf("Bearer %s", signedJWT))
 }
 
 func CreateMonthlyPlaylist(w http.ResponseWriter, r *http.Request) {

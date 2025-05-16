@@ -162,16 +162,19 @@ func (q *Queries) UpsertSpotifyCredentials(ctx context.Context, arg UpsertSpotif
 }
 
 const upsertUser = `-- name: UpsertUser :one
-INSERT INTO users (spotify_user_id, email)
-VALUES ($1, $2)
+INSERT INTO users (spotify_user_id, email, spotify_user_data)
+VALUES ($1, $2, $3)
 ON CONFLICT (spotify_user_id)
-  DO UPDATE SET email = EXCLUDED.email
+  DO UPDATE SET
+    email  = EXCLUDED.email,
+    spotify_user_data = EXCLUDED.spotify_user_data
 RETURNING id, refresh_token
 `
 
 type UpsertUserParams struct {
-	SpotifyUserID string
-	Email         string
+	SpotifyUserID   string
+	Email           string
+	SpotifyUserData []byte
 }
 
 type UpsertUserRow struct {
@@ -180,7 +183,7 @@ type UpsertUserRow struct {
 }
 
 func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (UpsertUserRow, error) {
-	row := q.db.QueryRow(ctx, upsertUser, arg.SpotifyUserID, arg.Email)
+	row := q.db.QueryRow(ctx, upsertUser, arg.SpotifyUserID, arg.Email, arg.SpotifyUserData)
 	var i UpsertUserRow
 	err := row.Scan(&i.ID, &i.RefreshToken)
 	return i, err

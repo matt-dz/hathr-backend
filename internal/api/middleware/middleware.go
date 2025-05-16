@@ -105,7 +105,8 @@ func HandleCORS(next http.Handler) http.Handler {
 		}
 		w.Header().Add("Access-Control-Allow-Origin", origin)
 		w.Header().Add("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-		w.Header().Add("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding")
+		w.Header().Add("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization")
+		w.Header().Add("Access-Control-Expose-Headers", "Authorization")
 		w.Header().Add("Access-Control-Allow-Credentials", "true")
 		w.Header().Add("Access-Control-Max-Age", "86400")
 		next.ServeHTTP(w, r)
@@ -231,8 +232,16 @@ func MatchUserIDs(next http.Handler) http.Handler {
 	})
 }
 
-func AddRoutes(router *mux.Router) {
+func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
+	router.Use(HandleCORS)
+	router.Use(RecoverMiddleware)
+	router.Use(InjectEnvironment(env))
+	router.Use(LogRequest)
 
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}).Methods("OPTIONS")
 	router.HandleFunc("/oauth/client-metadata.json", handlers.ServeOAuthMetadata).Methods("GET")
 
 	s := router.PathPrefix("/api").Subrouter()

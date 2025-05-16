@@ -28,7 +28,7 @@ run:
 
 docker-run:
 	@echo "🚀🐳  Starting docker image $(BINARY)..."
-	docker run --env-file .env -p $(DOCKER_PORT):8080 $(BINARY)
+	docker run --env-file .env -e JWKS_PATH=/app/jwks.json --mount type=bind,src=jwks.json,dst=/app/jwks.json,ro -p $(DOCKER_PORT):8080 $(BINARY)
 
 fmt:
 	@echo "🎨  Formatting code..."

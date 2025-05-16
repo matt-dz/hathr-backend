@@ -1,8 +1,10 @@
 -- name: UpsertUser :one
-INSERT INTO users (spotify_user_id, email)
-VALUES ($1, $2)
+INSERT INTO users (spotify_user_id, email, spotify_user_data)
+VALUES ($1, $2, $3)
 ON CONFLICT (spotify_user_id)
-  DO UPDATE SET email = EXCLUDED.email
+  DO UPDATE SET
+    email  = EXCLUDED.email,
+    spotify_user_data = EXCLUDED.spotify_user_data
 RETURNING id, refresh_token;
 
 -- name: CreateMonthlyPlaylist :one

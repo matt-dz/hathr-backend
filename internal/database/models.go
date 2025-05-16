@@ -36,6 +36,7 @@ type User struct {
 	ID               uuid.UUID
 	SpotifyUserID    string
 	Email            string
+	SpotifyUserData  []byte
 	CreatedAt        pgtype.Timestamp
 	RefreshToken     uuid.UUID
 	RefreshExpiresAt pgtype.Timestamp

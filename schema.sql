@@ -2,6 +2,8 @@ CREATE TABLE users (
     id UUID DEFAULT gen_random_uuid (),
     spotify_user_id TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL,
+    spotify_user_data JSONB NOT NULL,
+
     created_at TIMESTAMP NOT NULL DEFAULT now (),
     refresh_token UUID NOT NULL DEFAULT gen_random_uuid (),
     refresh_expires_at TIMESTAMP NOT NULL DEFAULT (now() + INTERVAL '1 year'),

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 
 	"hathr-backend/internal/api/models"
@@ -27,6 +28,22 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/zmb3/spotify/v2"
 )
+
+func ServeOAuthMetadata(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	env.DebugContext(ctx, "Encoding metadata")
+	w.Header().Add("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"client_id":    os.Getenv("SPOTIFY_CLIENT_ID"),
+		"redirect_uri": os.Getenv("SPOTIFY_REDIRECT_URI"),
+		"scopes":       "user-read-private user-read-email user-library-read user-top-read user-read-recently-played",
+	})
+}
 
 func Login(w http.ResponseWriter, r *http.Request) {
 

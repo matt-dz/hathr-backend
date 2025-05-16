@@ -14,14 +14,12 @@ services:
       - ./schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
   redis:
     image: redis:7.4.1
-    container_name: boshi-redis
+    container_name: hathr-redis
     restart: always
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    networks:
-      - boshi-network
 
 volumes:
   postgres_data:

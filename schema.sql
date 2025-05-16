@@ -3,7 +3,7 @@ CREATE TABLE users (
     spotify_user_id TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT now (),
-    refresh_token UUID NOT NULL DEFAULT gen_renadom_uuid (),
+    refresh_token UUID NOT NULL DEFAULT gen_random_uuid (),
     refresh_expires_at TIMESTAMP NOT NULL DEFAULT (now() + INTERVAL '1 year'),
 
     PRIMARY KEY (id)

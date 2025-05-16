@@ -232,6 +232,9 @@ func MatchUserIDs(next http.Handler) http.Handler {
 }
 
 func AddRoutes(router *mux.Router) {
+
+	router.HandleFunc("/oauth/client-metadata.json", handlers.ServeOAuthMetadata).Methods("GET")
+
 	s := router.PathPrefix("/api").Subrouter()
 	s.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -269,6 +269,20 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Unmarshal tracks
+	env.Logger.DebugContext(ctx, "Unmarshaling tracks")
+	var tracks []map[string]interface{}
+	for _, t := range playlist.Tracks {
+		var track map[string]interface{}
+		err = json.Unmarshal(t, &track)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to unmarshal track", slog.Any("error", err))
+			http.Error(w, "Unable to unmarshal track", http.StatusInternalServerError)
+			return
+		}
+		tracks = append(tracks, track)
+	}
+
 	// Encoding response
 	env.Logger.DebugContext(ctx, "Encoding response")
 	playlistMonth, err := models.GetMonth(int(playlist.Month))
@@ -280,7 +294,7 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(responses.GetPlaylist{
 		ID:        playlist.ID,
-		Tracks:    playlist.Tracks,
+		Tracks:    tracks,
 		Year:      int(playlist.Year),
 		Month:     playlistMonth,
 		Name:      playlist.Name,

@@ -12,7 +12,7 @@ import (
 type MonthlyPlaylist struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
-	Tracks    []string
+	Tracks    [][]byte
 	Year      int16
 	Month     int16
 	Name      string

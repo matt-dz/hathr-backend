@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 type Month string
@@ -40,4 +43,14 @@ func GetMonth(m int) (Month, error) {
 		return Month(""), fmt.Errorf("Month must be >= 0 and < 12. Received : %d", m)
 	}
 	return months[m], nil
+}
+
+type MonthlyPlaylist struct {
+	ID        uuid.UUID `json:"id" validate:"required"`
+	UserID    uuid.UUID `json:"user_id" validate:"required"`
+	Tracks    []string  `json:"tracks" validate:"required"`
+	Year      int16     `json:"year" validate:"required,gte=2025"`
+	Month     Month     `json:"month" validate:"required,validateFn"`
+	Name      string    `json:"name" validate:"required"`
+	CreatedAt time.Time `json:"created_at" validate:"required"`
 }

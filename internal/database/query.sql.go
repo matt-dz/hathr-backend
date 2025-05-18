@@ -52,17 +52,11 @@ func (q *Queries) GetLatestPrivateKey(ctx context.Context) (PrivateKey, error) {
 }
 
 const getPlaylist = `-- name: GetPlaylist :one
-SELECT id, user_id, tracks, year, month, name, created_at FROM monthly_playlists WHERE user_id = $1 AND year = $2 AND month = $3
+SELECT id, user_id, tracks, year, month, name, private, created_at, visibility FROM monthly_playlists WHERE id = $1
 `
 
-type GetPlaylistParams struct {
-	UserID uuid.UUID
-	Year   int16
-	Month  int16
-}
-
-func (q *Queries) GetPlaylist(ctx context.Context, arg GetPlaylistParams) (MonthlyPlaylist, error) {
-	row := q.db.QueryRow(ctx, getPlaylist, arg.UserID, arg.Year, arg.Month)
+func (q *Queries) GetPlaylist(ctx context.Context, id uuid.UUID) (MonthlyPlaylist, error) {
+	row := q.db.QueryRow(ctx, getPlaylist, id)
 	var i MonthlyPlaylist
 	err := row.Scan(
 		&i.ID,
@@ -71,7 +65,9 @@ func (q *Queries) GetPlaylist(ctx context.Context, arg GetPlaylistParams) (Month
 		&i.Year,
 		&i.Month,
 		&i.Name,
+		&i.Private,
 		&i.CreatedAt,
+		&i.Visibility,
 	)
 	return i, err
 }
@@ -88,7 +84,7 @@ func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) 
 }
 
 const getUserPlaylists = `-- name: GetUserPlaylists :many
-SELECT id, user_id, tracks, year, month, name, created_at FROM monthly_playlists WHERE user_id = $1
+SELECT id, user_id, tracks, year, month, name, private, created_at, visibility FROM monthly_playlists WHERE user_id = $1
 `
 
 func (q *Queries) GetUserPlaylists(ctx context.Context, userID uuid.UUID) ([]MonthlyPlaylist, error) {
@@ -107,7 +103,9 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, userID uuid.UUID) ([]Mon
 			&i.Year,
 			&i.Month,
 			&i.Name,
+			&i.Private,
 			&i.CreatedAt,
+			&i.Visibility,
 		); err != nil {
 			return nil, err
 		}

@@ -16,7 +16,7 @@ RETURNING id;
 SELECT * FROM monthly_playlists WHERE user_id = $1;
 
 -- name: GetPlaylist :one
-SELECT * FROM monthly_playlists WHERE user_id = $1 AND year = $2 AND month = $3;
+SELECT * FROM monthly_playlists WHERE id = $1;
 
 -- name: GetLatestPrivateKey :one
 SELECT * FROM private_keys

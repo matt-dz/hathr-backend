@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 
 	"hathr-backend/internal/api/models"
 	"hathr-backend/internal/api/models/responses"
@@ -23,6 +22,7 @@ import (
 	spotifyModels "hathr-backend/internal/spotify/models"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
@@ -225,48 +225,51 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve request parameters
 	env.Logger.DebugContext(ctx, "Retrieving request parameters")
-	userID, requestMonth := mux.Vars(r)["user_id"], mux.Vars(r)["month"]
-	year, err := strconv.Atoi(mux.Vars(r)["year"])
+	playlistID := mux.Vars(r)["id"]
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
-		env.ErrorContext(ctx, "Cannot convert year to integer", slog.Any("error", err))
-		http.Error(w, "Invalid year", http.StatusBadRequest)
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
 	// Validate parameters
 	env.Logger.DebugContext(ctx, "Validating parameters")
-	if int(int16(year)) != year {
-		env.ErrorContext(ctx, "Year is too large")
-		http.Error(w, "Year is too large", http.StatusBadRequest)
-		return
-	}
-	month := models.Month(requestMonth)
-	if err := month.Validate(); err != nil {
-		env.ErrorContext(ctx, "Invalid month", slog.Any("error", err))
-		http.Error(w, "Invalid month: "+requestMonth, http.StatusBadRequest)
+	if err := uuid.Validate(playlistID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid playlist ID", slog.Any("error", err))
+		http.Error(w, "Invalid playlist ID", http.StatusBadRequest)
 		return
 	}
 	if err := uuid.Validate(userID); err != nil {
-		env.ErrorContext(ctx, "Invalid userID", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Invalid userID", slog.Any("error", err))
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
 	}
 
 	// Retrieve playlist
 	env.Logger.DebugContext(ctx, "Retrieving playlist")
-	playlist, err := env.Database.Queries.GetPlaylist(ctx, database.GetPlaylistParams{
-		UserID: uuid.MustParse(userID),
-		Year:   int16(year),
-		Month:  int16(month.Index()),
-	})
+	playlist, err := env.Database.Queries.GetPlaylist(ctx, uuid.MustParse(playlistID))
 	if errors.Is(err, pgx.ErrNoRows) {
-		env.ErrorContext(ctx, "No playlist found", slog.Any("error", err))
-		http.Error(w, "No playlist found", http.StatusNotFound)
+		env.Logger.ErrorContext(ctx, "Playlist not found", slog.Any("error", err))
+		http.Error(w, "Playlist not found", http.StatusNotFound)
 		return
 	} else if err != nil {
-		env.ErrorContext(ctx, "Unsuccessful query", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Unsuccessful query", slog.Any("error", err))
 		http.Error(w, "Unable to retrieve playlist", http.StatusInternalServerError)
 		return
+	}
+
+	// Check if user is authorized to view the playlist
+	if playlist.UserID != uuid.MustParse(userID) &&
+		playlist.Visibility != database.PlaylistVisibilityPublic {
+		env.Logger.ErrorContext(ctx, "User not authorized to view playlist")
+		http.Error(w, "User not authorized to view playlist", http.StatusForbidden)
 	}
 
 	// Unmarshal tracks

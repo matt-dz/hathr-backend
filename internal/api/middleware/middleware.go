@@ -256,7 +256,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	playlists.Use(AuthorizeRequest)
 	playlists.Use(MatchUserIDs)
 	playlists.HandleFunc("/", handlers.GetUserPlaylists).Methods("GET")
-	playlists.HandleFunc("/{year}/{month}", handlers.GetPlaylist).Methods("GET")
+	playlists.HandleFunc("/{id}", handlers.GetPlaylist).Methods("GET")
 
 	playlist := s.PathPrefix("/playlist").Subrouter()
 	playlist.Use(AuthorizeRequest)

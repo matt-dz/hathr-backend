@@ -5,18 +5,66 @@
 package database
 
 import (
+	"database/sql/driver"
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type PlaylistVisibility string
+
+const (
+	PlaylistVisibilityPublic  PlaylistVisibility = "public"
+	PlaylistVisibilityFriends PlaylistVisibility = "friends"
+	PlaylistVisibilityPrivate PlaylistVisibility = "private"
+)
+
+func (e *PlaylistVisibility) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PlaylistVisibility(s)
+	case string:
+		*e = PlaylistVisibility(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PlaylistVisibility: %T", src)
+	}
+	return nil
+}
+
+type NullPlaylistVisibility struct {
+	PlaylistVisibility PlaylistVisibility
+	Valid              bool // Valid is true if PlaylistVisibility is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPlaylistVisibility) Scan(value interface{}) error {
+	if value == nil {
+		ns.PlaylistVisibility, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PlaylistVisibility.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPlaylistVisibility) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PlaylistVisibility), nil
+}
+
 type MonthlyPlaylist struct {
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	Tracks    [][]byte
-	Year      int16
-	Month     int16
-	Name      string
-	CreatedAt pgtype.Timestamptz
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Tracks     [][]byte
+	Year       int16
+	Month      int16
+	Name       string
+	Private    bool
+	CreatedAt  pgtype.Timestamptz
+	Visibility PlaylistVisibility
 }
 
 type PrivateKey struct {

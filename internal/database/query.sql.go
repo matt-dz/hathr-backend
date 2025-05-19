@@ -82,6 +82,25 @@ func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) 
 	return value, err
 }
 
+const getUserFromSession = `-- name: GetUserFromSession :one
+SELECT id, spotify_user_id, email, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE refresh_token = $1
+`
+
+func (q *Queries) GetUserFromSession(ctx context.Context, refreshToken uuid.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, getUserFromSession, refreshToken)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.SpotifyUserID,
+		&i.Email,
+		&i.SpotifyUserData,
+		&i.CreatedAt,
+		&i.RefreshToken,
+		&i.RefreshExpiresAt,
+	)
+	return i, err
+}
+
 const getUserPlaylists = `-- name: GetUserPlaylists :many
 SELECT id, user_id, tracks, year, month, name, created_at, visibility FROM monthly_playlists WHERE user_id = $1
 `

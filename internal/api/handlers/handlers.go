@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	"hathr-backend/internal/api/models"
+	"hathr-backend/internal/api/models/requests"
 	"hathr-backend/internal/api/models/responses"
 	"hathr-backend/internal/database"
 	hathrEnv "hathr-backend/internal/env"
@@ -69,14 +71,9 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	// Validate payload
 	env.Logger.DebugContext(ctx, "Validating request body")
 	validate := validator.New(validator.WithRequiredStructEnabled())
-	err = validate.Struct(loginRequest)
-	if _, ok := err.(*validator.ValidationErrors); ok {
-		env.Logger.ErrorContext(ctx, "Invalid request body", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	} else if err != nil {
+	if err := validate.Struct(loginRequest); err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
-		http.Error(w, "Failed to validate request body", http.StatusInternalServerError)
+		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
@@ -165,10 +162,9 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	signedJWT, err := hathrJWT.CreateJWT(hathrJWT.JWTParams{
 		UserID: dbUser.ID.String(),
 		Admin:  false,
-		SpotifyData: struct {
-			DisplayName string
-		}{
+		SpotifyData: hathrJWT.SpotifyClaims{
 			DisplayName: spotifyUser.DisplayName,
+			Email:       spotifyUser.Email,
 		},
 	}, []byte(key.Value))
 	if err != nil {
@@ -180,6 +176,96 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	// Return JWT
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Add("Authorization", fmt.Sprintf("Bearer %s", signedJWT))
+}
+
+func RefreshSession(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Decode request payload
+	env.Logger.DebugContext(ctx, "Decoding request body")
+	var refreshRequest requests.RefreshSession
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
+	err := hathrJson.DecodeJson(&refreshRequest, decoder)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate payload
+	env.Logger.DebugContext(ctx, "Validating request body")
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	if err := validate.Struct(refreshRequest); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Retrieve user
+	env.Logger.DebugContext(ctx, "Retrieving user")
+	user, err := env.Database.GetUserFromSession(ctx, refreshRequest.RefreshToken)
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.Logger.ErrorContext(ctx, "No user associated with token", slog.Any("error", err))
+		http.Error(w, "No user associated with token", http.StatusUnauthorized)
+		return
+	} else if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to retrieve user", slog.Any("error", err))
+		http.Error(w, "Unable to retrieve user", http.StatusInternalServerError)
+		return
+	}
+
+	// Validate refresh token
+	if user.RefreshExpiresAt.Time.Before(time.Now()) {
+		env.Logger.ErrorContext(ctx, "Refresh token expired")
+		http.Error(w, "Refresh token expired", http.StatusUnauthorized)
+		return
+	}
+
+	// Retrieve private key for JWT signing
+	env.Logger.DebugContext(ctx, "Retrieving private key")
+	key, err := env.Database.GetLatestPrivateKey(ctx)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to retrieve private key", slog.Any("error", err))
+		http.Error(w, "Unable to retrieve private key", http.StatusInternalServerError)
+		return
+	}
+
+	// Unmarshal spotify data
+	env.Logger.DebugContext(ctx, "Unmarshaling spotify data")
+	var spotifyUserData spotifyModels.User
+	err = json.Unmarshal(user.SpotifyUserData, &spotifyUserData)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify data", slog.Any("error", err))
+		http.Error(w, "Unable to unmarshal user data", http.StatusInternalServerError)
+		return
+	}
+
+	// Create JWT
+	env.Logger.DebugContext(ctx, "Creating JWT")
+	accessToken, err := hathrJWT.CreateJWT(hathrJWT.JWTParams{
+		UserID: user.ID.String(),
+		Admin:  false,
+		SpotifyData: hathrJWT.SpotifyClaims{
+			DisplayName: spotifyUserData.DisplayName,
+			Email:       spotifyUserData.Email,
+			Images:      spotifyUserData.Images,
+		},
+	}, []byte(key.Value))
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
+		http.Error(w, "Unable to create JWT", http.StatusInternalServerError)
+		return
+	}
+
+	// Encode response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
 }
 
 func CreateMonthlyPlaylist(w http.ResponseWriter, r *http.Request) {

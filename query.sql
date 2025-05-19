@@ -48,3 +48,6 @@ DO UPDATE SET
   token_type     = EXCLUDED.token_type,
   scope          = EXCLUDED.scope,
   refresh_token  = EXCLUDED.refresh_token;
+
+-- name: GetUserFromSession :one
+SELECT * FROM users WHERE refresh_token = $1;

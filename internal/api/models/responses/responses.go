@@ -23,8 +23,19 @@ type CreateMonthlyPlaylist struct {
 	ID uuid.UUID `json:"id" validate:"required"`
 }
 
+type MonthlyPlaylist struct {
+	ID         uuid.UUID                   `json:"id"`
+	UserID     uuid.UUID                   `json:"user_id"`
+	Tracks     []map[string]interface{}    `json:"tracks"`
+	Year       int                         `json:"year"`
+	Month      models.Month                `json:"month"`
+	Name       string                      `json:"name"`
+	CreatedAt  time.Time                   `json:"created_at"`
+	Visibility database.PlaylistVisibility `json:"visibility"`
+}
+
 type GetUserPlaylists struct {
-	Playlists []database.MonthlyPlaylist `json:"playlists" validate:"required"`
+	Playlists []MonthlyPlaylist `json:"playlists" validate:"required"`
 }
 
 type GetPlaylist struct {

@@ -46,14 +46,14 @@ func validateOrigin(origin string) bool {
 // Handles panic recovery
 func RecoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		environment, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+		env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
 		if !ok {
-			environment = hathrEnv.Null()
+			env = hathrEnv.Null()
 		}
 
 		defer func() {
 			if err := recover(); err != nil {
-				environment.Logger.Error("Panic occurred: %v", err)
+				env.Logger.ErrorContext(r.Context(), "Panic occurred", slog.Any("panic", err))
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			}
 		}()

@@ -29,6 +29,7 @@ CREATE TABLE monthly_playlists (
     UNIQUE (user_id, year, month)
 );
 
+
 CREATE TABLE private_keys (
     kid SERIAL,
     value TEXT NOT NULL,

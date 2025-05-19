@@ -201,26 +201,57 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 	}
 
 	env.Logger.DebugContext(ctx, "Getting user playlists")
-	playlists, err := env.Database.GetUserPlaylists(ctx, uuid.MustParse(userID))
+	dbPlaylists, err := env.Database.GetUserPlaylists(ctx, uuid.MustParse(userID))
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user playlists", slog.Any("error", err))
 		http.Error(w, "Failed to get user playlists", http.StatusInternalServerError)
 		return
 	}
 
-	// Explicitly set empty playlists to an empty slice
-	// Prevents nil slice in JSON response
-	if len(playlists) == 0 {
-		playlists = make([]database.MonthlyPlaylist, 0)
+	// Decode tracks
+	env.Logger.DebugContext(ctx, "Decoding tracks")
+	playlists := responses.GetUserPlaylists{
+		Playlists: make([]responses.MonthlyPlaylist, 0),
 	}
-	env.Logger.DebugContext(ctx, "Successfully retrieved user playlists", slog.Any("playlists", playlists))
+	for i, playlist := range dbPlaylists {
+		// Unmarshal each track
+		tracks := make([]map[string]interface{}, 0)
+		for j, t := range playlist.Tracks {
+			var track map[string]interface{}
+			env.Logger.DebugContext(ctx, "Unarmashaling track", slog.Int("no.", j), slog.Any("track", t))
+			err := json.Unmarshal(t, &track)
+			if err != nil {
+				env.Logger.ErrorContext(ctx, "Unable to unmarshal track", slog.Any("error", err))
+				http.Error(w, "Unable to unmarshal track", http.StatusInternalServerError)
+				return
+			}
+			tracks = append(tracks, track)
+		}
+
+		month, err := models.GetMonth(int(playlist.Month))
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Invalid month", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		playlists.Playlists = append(playlists.Playlists, responses.MonthlyPlaylist{
+			ID:         playlist.ID,
+			UserID:     playlist.UserID,
+			Year:       int(playlist.Year),
+			Month:      month,
+			Name:       playlist.Name,
+			CreatedAt:  playlist.CreatedAt.Time,
+			Visibility: playlist.Visibility,
+			Tracks:     tracks,
+		})
+		env.Logger.DebugContext(ctx, "Unmarshaled tracks", slog.Int("no.", i))
+	}
 
 	// Serialize playlists to JSON
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(responses.GetUserPlaylists{
-		Playlists: playlists,
-	})
+	err = json.NewEncoder(w).Encode(playlists)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode user playlists", slog.Any("error", err))
 		http.Error(w, "Failed to encode user playlists", http.StatusInternalServerError)

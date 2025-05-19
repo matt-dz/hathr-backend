@@ -176,6 +176,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	// Return JWT
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Add("Authorization", fmt.Sprintf("Bearer %s", signedJWT))
+	err = json.NewEncoder(w).Encode(responses.LoginUser{
+		RefreshToken: dbUser.RefreshToken,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))
+		http.Error(w, "Unable to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func RefreshSession(w http.ResponseWriter, r *http.Request) {

@@ -12,7 +12,7 @@ import (
 )
 
 type LoginUser struct {
-	RefreshToken string `json:"refresh_token" validate:"required"`
+	RefreshToken uuid.UUID `json:"refresh_token"`
 }
 
 type UpsertUser struct {

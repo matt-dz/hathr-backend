@@ -23,7 +23,6 @@ SELECT * FROM private_keys
 ORDER BY kid DESC
 LIMIT 1;
 
-
 -- name: GetPrivateKey :one
 SELECT value FROM private_keys WHERE kid = $1;
 

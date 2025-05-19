@@ -62,7 +62,6 @@ type MonthlyPlaylist struct {
 	Year       int16
 	Month      int16
 	Name       string
-	Private    bool
 	CreatedAt  pgtype.Timestamptz
 	Visibility PlaylistVisibility
 }

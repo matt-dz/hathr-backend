@@ -22,7 +22,6 @@ CREATE TABLE monthly_playlists (
     year SMALLINT NOT NULL,
     month SMALLINT NOT NULL CHECK (month BETWEEN 0 and 11),
     name TEXT NOT NULL,
-    private BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now (),
     visibility playlist_visibility NOT NULL DEFAULT 'public',
     PRIMARY KEY (id),

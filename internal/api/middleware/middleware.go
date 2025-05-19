@@ -27,6 +27,12 @@ type logResponseWriter struct {
 	statusCode int
 }
 
+// Write captures the status code and writes the response
+func (lrw *logResponseWriter) WriteHeader(code int) {
+	lrw.statusCode = code
+	lrw.ResponseWriter.WriteHeader(code)
+}
+
 // validateOrigin checks if the origin is in the allow list.
 func validateOrigin(origin string) bool {
 
@@ -109,6 +115,11 @@ func HandleCORS(next http.Handler) http.Handler {
 		w.Header().Add("Access-Control-Expose-Headers", "Authorization")
 		w.Header().Add("Access-Control-Allow-Credentials", "true")
 		w.Header().Add("Access-Control-Max-Age", "86400")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -254,8 +265,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 
 	playlists := s.PathPrefix("/me/playlists").Subrouter()
 	playlists.Use(AuthorizeRequest)
-	playlists.Use(MatchUserIDs)
-	playlists.HandleFunc("/", handlers.GetUserPlaylists).Methods("GET")
+	playlists.HandleFunc("", handlers.GetUserPlaylists).Methods("GET", "OPTIONS")
 	playlists.HandleFunc("/{id}", handlers.GetPlaylist).Methods("GET")
 
 	playlist := s.PathPrefix("/playlist").Subrouter()

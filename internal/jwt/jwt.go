@@ -13,8 +13,38 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 )
 
+// Reads the JWKS file and returns the latest KID.
+// Assumes the first key in the JWKS is the latest one.
+func getLatestKID() (string, error) {
+	// Load JWKS path
+	var jwks jose.JSONWebKeySet
+	jwksPath := os.Getenv("JWKS_PATH")
+	if _, err := os.Stat(jwksPath); err != nil {
+		return "", fmt.Errorf("Invalid JWKS_PATH: %w", err)
+	}
+
+	// Read the JWKS
+	data, err := os.ReadFile(jwksPath)
+	if err != nil {
+		return "", fmt.Errorf("Failed to read JWKS file: %w", err)
+	}
+	if err := json.Unmarshal(data, &jwks); err != nil {
+		return "", fmt.Errorf("Failed to unmarshal JWKS file: %w", err)
+	}
+	if len(jwks.Keys) == 0 {
+		return "", fmt.Errorf("No keys found in JWKS")
+	}
+
+	return jwks.Keys[0].KeyID, nil
+}
+
 // Creates a JWT
 func CreateJWT(userID string, admin bool, privateKeyBytes []byte) (string, error) {
+
+	kid, err := getLatestKID()
+	if err != nil {
+		return "", err
+	}
 
 	claims := jwt.MapClaims{
 		"sub":   userID,
@@ -23,6 +53,7 @@ func CreateJWT(userID string, admin bool, privateKeyBytes []byte) (string, error
 		"admin": admin,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token.Header["kid"] = kid
 
 	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM(privateKeyBytes)
 	if err != nil {
@@ -76,6 +107,6 @@ func ValidateJWT(rawToken string) (*jwt.Token, error) {
 	}
 
 	// Parse the token
-	token, err := jwt.ParseWithClaims(rawToken, nil, parserFunc)
+	token, err := jwt.Parse(rawToken, parserFunc)
 	return token, err
 }

@@ -187,10 +187,16 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get user playlists
-	userID := mux.Vars(r)["user_id"]
-	if err := uuid.Validate(userID); err != nil { // sanity check
-		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -201,6 +207,13 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to get user playlists", http.StatusInternalServerError)
 		return
 	}
+
+	// Explicitly set empty playlists to an empty slice
+	// Prevents nil slice in JSON response
+	if len(playlists) == 0 {
+		playlists = make([]database.MonthlyPlaylist, 0)
+	}
+	env.Logger.DebugContext(ctx, "Successfully retrieved user playlists", slog.Any("playlists", playlists))
 
 	// Serialize playlists to JSON
 	env.Logger.DebugContext(ctx, "Encoding response")

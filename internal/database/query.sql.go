@@ -52,7 +52,7 @@ func (q *Queries) GetLatestPrivateKey(ctx context.Context) (PrivateKey, error) {
 }
 
 const getPlaylist = `-- name: GetPlaylist :one
-SELECT id, user_id, tracks, year, month, name, private, created_at, visibility FROM monthly_playlists WHERE id = $1
+SELECT id, user_id, tracks, year, month, name, created_at, visibility FROM monthly_playlists WHERE id = $1
 `
 
 func (q *Queries) GetPlaylist(ctx context.Context, id uuid.UUID) (MonthlyPlaylist, error) {
@@ -65,7 +65,6 @@ func (q *Queries) GetPlaylist(ctx context.Context, id uuid.UUID) (MonthlyPlaylis
 		&i.Year,
 		&i.Month,
 		&i.Name,
-		&i.Private,
 		&i.CreatedAt,
 		&i.Visibility,
 	)
@@ -84,7 +83,7 @@ func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) 
 }
 
 const getUserPlaylists = `-- name: GetUserPlaylists :many
-SELECT id, user_id, tracks, year, month, name, private, created_at, visibility FROM monthly_playlists WHERE user_id = $1
+SELECT id, user_id, tracks, year, month, name, created_at, visibility FROM monthly_playlists WHERE user_id = $1
 `
 
 func (q *Queries) GetUserPlaylists(ctx context.Context, userID uuid.UUID) ([]MonthlyPlaylist, error) {
@@ -103,7 +102,6 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, userID uuid.UUID) ([]Mon
 			&i.Year,
 			&i.Month,
 			&i.Name,
-			&i.Private,
 			&i.CreatedAt,
 			&i.Visibility,
 		); err != nil {

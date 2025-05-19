@@ -220,7 +220,7 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 	user, err := env.Database.GetUserFromSession(ctx, refreshRequest.RefreshToken)
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.Logger.ErrorContext(ctx, "No user associated with token", slog.Any("error", err))
-		http.Error(w, "No user associated with token", http.StatusUnauthorized)
+		http.Error(w, "No user associated with token", http.StatusNotFound)
 		return
 	} else if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to retrieve user", slog.Any("error", err))
@@ -320,7 +320,7 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 		tracks := make([]map[string]interface{}, 0)
 		for j, t := range playlist.Tracks {
 			var track map[string]interface{}
-			env.Logger.DebugContext(ctx, "Unarmashaling track", slog.Int("no.", j), slog.Any("track", t))
+			env.Logger.DebugContext(ctx, "Unarmashaling track", slog.Int("no.", j))
 			err := json.Unmarshal(t, &track)
 			if err != nil {
 				env.Logger.ErrorContext(ctx, "Unable to unmarshal track", slog.Any("error", err))

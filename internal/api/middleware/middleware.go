@@ -4,6 +4,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -140,28 +141,13 @@ func AuthorizeRequest(next http.Handler) http.Handler {
 
 		env.Logger.DebugContext(r.Context(), "Validating JWT")
 		token, err := hathrJwt.ValidateJWT(rawJWT)
-		if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			env.Logger.ErrorContext(r.Context(), "JWT expired", slog.Any("error", err))
+			http.Error(w, "Access token expired", http.StatusUnauthorized)
+			return
+		} else if err != nil {
 			env.Logger.ErrorContext(r.Context(), "Invalid JWT", slog.Any("error", err))
 			http.Error(w, "Invalid JWT", http.StatusUnauthorized)
-			return
-		}
-
-		if !token.Valid {
-			env.Logger.ErrorContext(r.Context(), "Invalid JWT")
-			http.Error(w, "Invalid JWT", http.StatusUnauthorized)
-			return
-		}
-
-		env.Logger.DebugContext(r.Context(), "Checking JWT expiration")
-		expiration, err := token.Claims.GetExpirationTime()
-		if err != nil {
-			env.Logger.ErrorContext(r.Context(), "Failed to get expiration time", slog.Any("error", err))
-			http.Error(w, "Invalid exp field in JWT", http.StatusBadRequest)
-			return
-		}
-
-		if expiration.Before(time.Now()) {
-			http.Error(w, "Token expired", http.StatusUnauthorized)
 			return
 		}
 

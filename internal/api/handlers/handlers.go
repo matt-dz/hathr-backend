@@ -315,7 +315,7 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 	playlists := responses.GetUserPlaylists{
 		Playlists: make([]responses.MonthlyPlaylist, 0),
 	}
-	for i, playlist := range dbPlaylists {
+	for _, playlist := range dbPlaylists {
 		// Unmarshal each track
 		tracks := make([]map[string]interface{}, 0)
 		for j, t := range playlist.Tracks {
@@ -347,7 +347,7 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 			Visibility: playlist.Visibility,
 			Tracks:     tracks,
 		})
-		env.Logger.DebugContext(ctx, "Unmarshaled tracks", slog.Int("no.", i))
+		env.Logger.DebugContext(ctx, "Unmarshaled tracks")
 	}
 
 	// Serialize playlists to JSON

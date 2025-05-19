@@ -2,14 +2,12 @@ package database
 
 import (
 	"context"
-	"sync"
 
 	"github.com/jackc/pgx/v5"
 )
 
 var queries *Queries
 var connection *pgx.Conn
-var once sync.Once
 
 type Database struct {
 	*Queries

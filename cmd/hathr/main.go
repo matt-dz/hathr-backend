@@ -14,7 +14,7 @@ import (
 	"hathr-backend/internal/logging"
 
 	"github.com/gorilla/mux"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const defaultPort = "8080"
@@ -31,7 +31,7 @@ func main() {
 
 	// Connect to DB
 	logger.Info("Establishing DB Connection")
-	conn, err := pgx.Connect(
+	pool, err := pgxpool.New(
 		context.Background(),
 		fmt.Sprintf(
 			"user=%s password=%s host=%s port=%s dbname=%s sslmode=disable",
@@ -40,12 +40,13 @@ func main() {
 			os.Getenv("DB_HOST"),
 			os.Getenv("DB_PORT"),
 			os.Getenv("DB_NAME"),
-		))
+		),
+	)
 	if err != nil {
 		panic(err)
 	}
 
-	env := hathrEnv.NewEnvironment(logger, &database.Database{Queries: database.New(conn)})
+	env := hathrEnv.NewEnvironment(logger, &database.Database{Queries: database.New(pool)})
 	defer env.Database.Close()
 
 	// Create HTTP Handler

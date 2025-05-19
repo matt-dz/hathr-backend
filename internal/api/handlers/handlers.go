@@ -442,12 +442,13 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Add("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(responses.GetPlaylist{
-		ID:        playlist.ID,
-		Tracks:    tracks,
-		Year:      int(playlist.Year),
-		Month:     playlistMonth,
-		Name:      playlist.Name,
-		CreatedAt: playlist.CreatedAt.Time,
+		ID:         playlist.ID,
+		Tracks:     tracks,
+		Year:       int(playlist.Year),
+		Month:      playlistMonth,
+		Name:       playlist.Name,
+		CreatedAt:  playlist.CreatedAt.Time,
+		Visibility: playlist.Visibility,
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))

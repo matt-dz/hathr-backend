@@ -38,8 +38,16 @@ func getLatestKID() (string, error) {
 	return jwks.Keys[0].KeyID, nil
 }
 
+type JWTParams struct {
+	Admin       bool
+	UserID      string
+	SpotifyData struct {
+		DisplayName string
+	}
+}
+
 // Creates a JWT
-func CreateJWT(userID string, admin bool, privateKeyBytes []byte) (string, error) {
+func CreateJWT(params JWTParams, privateKeyBytes []byte) (string, error) {
 
 	kid, err := getLatestKID()
 	if err != nil {
@@ -47,10 +55,13 @@ func CreateJWT(userID string, admin bool, privateKeyBytes []byte) (string, error
 	}
 
 	claims := jwt.MapClaims{
-		"sub":   userID,
+		"sub":   params.UserID,
 		"iat":   time.Now().Unix(),
 		"exp":   time.Now().Add(time.Hour).Unix(),
-		"admin": admin,
+		"admin": params.Admin,
+		"spotify": map[string]string{
+			"display_name": params.SpotifyData.DisplayName,
+		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = kid

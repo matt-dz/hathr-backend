@@ -162,7 +162,15 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT for user
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	signedJWT, err := hathrJWT.CreateJWT(dbUser.ID.String(), false, []byte(key.Value))
+	signedJWT, err := hathrJWT.CreateJWT(hathrJWT.JWTParams{
+		UserID: dbUser.ID.String(),
+		Admin:  false,
+		SpotifyData: struct {
+			DisplayName string
+		}{
+			DisplayName: spotifyUser.DisplayName,
+		},
+	}, []byte(key.Value))
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, "Unable to create JWT", http.StatusInternalServerError)

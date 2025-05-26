@@ -4,6 +4,7 @@ package requests
 
 import (
 	"hathr-backend/internal/api/models"
+	"hathr-backend/internal/database"
 
 	"github.com/google/uuid"
 )
@@ -30,4 +31,8 @@ type GetPlaylist struct {
 
 type RefreshSession struct {
 	RefreshToken uuid.UUID `json:"refresh_token" validate:"required"`
+}
+
+type UpdateVisibility struct {
+	Visibility database.PlaylistVisibility `json:"visibility" validate:"required,oneof=public friends private"`
 }

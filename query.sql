@@ -50,3 +50,9 @@ DO UPDATE SET
 
 -- name: GetUserFromSession :one
 SELECT * FROM users WHERE refresh_token = $1;
+
+
+-- name: UpdateVisibility :execrows
+UPDATE monthly_playlists
+    SET visibility = $1
+    WHERE id = $2 AND user_id = $3;

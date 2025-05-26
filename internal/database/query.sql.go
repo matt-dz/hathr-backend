@@ -134,6 +134,26 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, userID uuid.UUID) ([]Mon
 	return items, nil
 }
 
+const updateVisibility = `-- name: UpdateVisibility :execrows
+UPDATE monthly_playlists
+    SET visibility = $1
+    WHERE id = $2 AND user_id = $3
+`
+
+type UpdateVisibilityParams struct {
+	Visibility PlaylistVisibility
+	ID         uuid.UUID
+	UserID     uuid.UUID
+}
+
+func (q *Queries) UpdateVisibility(ctx context.Context, arg UpdateVisibilityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateVisibility, arg.Visibility, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const upsertSpotifyCredentials = `-- name: UpsertSpotifyCredentials :exec
 INSERT INTO spotify_tokens (
   user_id,

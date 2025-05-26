@@ -455,3 +455,79 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to encode response", http.StatusInternalServerError)
 	}
 }
+
+func UpdateVisibility(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	playlistID := mux.Vars(r)["id"]
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+
+	// Decode request
+	env.Logger.DebugContext(ctx, "Decoding request body")
+	var req requests.UpdateVisibility
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	err = hathrJson.DecodeJson(&req, decoder)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validating request body
+	env.Logger.DebugContext(ctx, "Validating request body")
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	if err = validate.Struct(req); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(playlistID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid playlist ID", slog.Any("error", err))
+		http.Error(w, "Invalid playlist ID", http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Update visibility in the database
+	env.Logger.DebugContext(ctx, "Updating visibility")
+	rows, err := env.Database.UpdateVisibility(ctx, database.UpdateVisibilityParams{
+		Visibility: req.Visibility,
+		ID:         uuid.MustParse(playlistID),
+		UserID:     uuid.MustParse(userID),
+	})
+	if rows == 0 {
+		env.Logger.ErrorContext(ctx, "No rows affected. Playlist not found.", slog.Any("error", err))
+		http.Error(w, "Playlist not found or you are not authorized to update it", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to update visibility", slog.Any("error", err))
+		http.Error(w, "Failed to update visibility", http.StatusInternalServerError)
+		return
+	}
+	env.Logger.DebugContext(ctx, "Successfully updated visibility")
+	w.WriteHeader(http.StatusNoContent)
+}

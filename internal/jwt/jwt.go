@@ -44,6 +44,7 @@ type SpotifyClaims struct {
 	DisplayName string         `json:"display_name"`
 	Email       string         `json:"email"`
 	Images      []models.Image `json:"images"`
+	ID          string         `json:"id"`
 }
 
 type JWTParams struct {
@@ -77,6 +78,7 @@ func CreateJWT(params JWTParams, privateKeyBytes []byte) (string, error) {
 			"display_name": params.SpotifyData.DisplayName,
 			"email":        params.SpotifyData.Email,
 			"images":       images,
+			"id":           params.SpotifyData.ID,
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)

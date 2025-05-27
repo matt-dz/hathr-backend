@@ -15,6 +15,13 @@ spec:
       labels:
         app: backend
     spec:
+      volumes:
+        - name: jwks-volume
+          configMap:
+            name: jwks-config
+            items:
+              - key: jwks.json
+                path: jwks.json
       containers:
         - name: backend
           image: matthew10125/hathr-backend
@@ -31,6 +38,20 @@ spec:
               value: "${DB_PORT}"
             - name: DB_NAME
               value: "${DB_NAME}"
+            - name: PORT
+              value: "${PORT}"
+            - name: SPOTIFY_CLIENT_ID
+              value: "${SPOTIFY_CLIENT_ID}"
+            - name: SPOTIFY_REDIRECT_URI
+              value: "${SPOTIFY_REDIRECT_URI}"
+            - name: ORIGIN_URL
+              value: "${ORIGIN_URL}"
+            - name: JWKS_PATH
+              value: "/etc/jwks/jwks.json"
+          volumeMounts:
+            - name: jwks-volume
+              mountPath: /etc/jwks
+              subPath: jwks.json
 ---
 apiVersion: v1
 kind: Service

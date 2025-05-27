@@ -29,8 +29,8 @@ func main() {
 			})},
 	)
 
-	// Connect to DB
-	logger.Info("Establishing DB Connection")
+	// Create database connection pool
+	logger.Info("Creating database connection pool")
 	pool, err := pgxpool.New(
 		context.Background(),
 		fmt.Sprintf(

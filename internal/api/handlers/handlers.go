@@ -165,6 +165,8 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		SpotifyData: hathrJWT.SpotifyClaims{
 			DisplayName: spotifyUser.DisplayName,
 			Email:       spotifyUser.Email,
+			Images:      spotifyUser.Images,
+			ID:          spotifyUser.ID,
 		},
 	}, []byte(key.Value))
 	if err != nil {
@@ -263,6 +265,7 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 			DisplayName: spotifyUserData.DisplayName,
 			Email:       spotifyUserData.Email,
 			Images:      spotifyUserData.Images,
+			ID:          spotifyUserData.ID,
 		},
 	}, []byte(key.Value))
 	if err != nil {

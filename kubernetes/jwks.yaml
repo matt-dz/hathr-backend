@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jwks-config
+  namespace: hathr
+data:
+  jwks.json: |
+    {
+      /* Your jwks.json content here */
+    }

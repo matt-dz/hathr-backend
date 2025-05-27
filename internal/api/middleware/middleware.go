@@ -20,8 +20,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-const originURL = "https://hathr.deguzman.cloud"
-
 // Custom ResponseWriter that captures the status code
 type logResponseWriter struct {
 	http.ResponseWriter
@@ -34,15 +32,15 @@ func (lrw *logResponseWriter) WriteHeader(code int) {
 	lrw.ResponseWriter.WriteHeader(code)
 }
 
-// validateOrigin checks if the origin is in the allow list.
-func validateOrigin(origin string) bool {
+// // validateOrigin checks if the origin is in the allow list.
+// func validateOrigin(origin string) bool {
 
-	if os.Getenv("ENV") == "PROD" {
-		return origin == originURL
-	}
+// 	if os.Getenv("ENV") == "PROD" {
+// 		return origin == originURL
+// 	}
 
-	return true
-}
+// 	return true
+// }
 
 // Handles panic recovery
 func RecoverMiddleware(next http.Handler) http.Handler {
@@ -104,11 +102,15 @@ func LogRequest(next http.Handler) http.Handler {
 // Adds CORS policy
 func HandleCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		/* If origin is not in allow list, do not add CORS headers */
-		origin := r.Header.Get("Origin")
-		if !validateOrigin(origin) {
-			http.Error(w, "Invalid origin", http.StatusUnauthorized)
-			return
+		// /* If origin is not in allow list, do not add CORS headers */
+		// origin := r.Header.Get("Origin")
+		// if !validateOrigin(origin) {
+		// 	http.Error(w, "Invalid origin", http.StatusUnauthorized)
+		// 	return
+		// }
+		origin := "*"
+		if os.Getenv("ENV") == "PROD" {
+			origin = os.Getenv("ORIGIN_URL")
 		}
 		w.Header().Add("Access-Control-Allow-Origin", origin)
 		w.Header().Add("Access-Control-Allow-Methods", "POST, GET, PUT, OPTIONS, DELETE")

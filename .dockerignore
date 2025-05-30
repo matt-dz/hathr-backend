@@ -14,6 +14,8 @@ kubernetes/
 
 jwks.json
 jwks.json.template
+*.pem
+*.pub
 
 query.sql
 schema.sql

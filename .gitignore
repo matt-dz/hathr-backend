@@ -32,3 +32,5 @@ bin/*
 
 jwks.json
 !jwks.json.template
+*.pem
+*.pub

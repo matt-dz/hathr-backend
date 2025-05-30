@@ -32,7 +32,7 @@ Create a `jwks.json` file in the root directory and paste the JWK into it. The f
   "keys": [
     {
       "kty": "RSA",
-      "n": "<your_n_value>"
+      "n": "<your_n_value>",
       "e": "<your_e_value>",
       "alg": "RS256",
       "kid": "1",

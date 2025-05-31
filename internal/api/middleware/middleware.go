@@ -241,7 +241,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods("OPTIONS")
-	router.HandleFunc("/oauth/client-metadata.json", handlers.ServeOAuthMetadata).Methods("GET")
+	router.HandleFunc("/oauth/spotify/client-metadata.json", handlers.ServeOAuthMetadata).Methods("GET")
 
 	s := router.PathPrefix("/api").Subrouter()
 	s.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

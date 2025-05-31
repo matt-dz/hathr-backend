@@ -21,12 +21,18 @@ CREATE TYPE friendship_status AS ENUM(
 CREATE TABLE friendships (
     user_a_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     user_b_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    requester_id UUID NOT NULL,
+
     status friendship_status NOT NULL DEFAULT 'pending',
     requested_at TIMESTAMP NOT NULL DEFAULT now(),
     responded_at TIMESTAMP NOT NULL,
     PRIMARY KEY (user_a_id, user_b_id),
+
     -- enforce a single row per pair, no matter who is “first”
-    CHECK (user_a_id < user_b_id)
+    CHECK (user_a_id < user_b_id),
+
+    -- ensure requester_id is one of the users in the friendship
+    CHECK (user_a_id = requester_id OR user_b_id = requester_id)
 );
 
 CREATE INDEX ON friendships (user_a_id, status);

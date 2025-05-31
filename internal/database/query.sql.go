@@ -35,17 +35,18 @@ func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendReque
 }
 
 const createFriendRequest = `-- name: CreateFriendRequest :exec
-INSERT INTO friendships (user_a_id, user_b_id)
-VALUES (LEAST($1, $2), GREATEST($1, $2))
+INSERT INTO friendships (user_a_id, user_b_id, requester_id)
+VALUES (LEAST($1, $2), GREATEST($1, $2), $3)
 `
 
 type CreateFriendRequestParams struct {
-	Column1 interface{}
-	Column2 interface{}
+	Column1     interface{}
+	Column2     interface{}
+	RequesterID uuid.UUID
 }
 
 func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) error {
-	_, err := q.db.Exec(ctx, createFriendRequest, arg.Column1, arg.Column2)
+	_, err := q.db.Exec(ctx, createFriendRequest, arg.Column1, arg.Column2, arg.RequesterID)
 	return err
 }
 
@@ -74,46 +75,6 @@ func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPl
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
-}
-
-const getFriends = `-- name: GetFriends :many
-SELECT u.id, u.spotify_user_id, u.email, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
-FROM friendships f
-JOIN users u
-  ON (u.id = CASE
-                WHEN f.user_a_id = $1 THEN f.user_b_id
-                ELSE f.user_a_id
-             END)
-WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
-  AND f.status = 'accepted'
-`
-
-func (q *Queries) GetFriends(ctx context.Context, userAID uuid.UUID) ([]User, error) {
-	rows, err := q.db.Query(ctx, getFriends, userAID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []User
-	for rows.Next() {
-		var i User
-		if err := rows.Scan(
-			&i.ID,
-			&i.SpotifyUserID,
-			&i.Email,
-			&i.SpotifyUserData,
-			&i.CreatedAt,
-			&i.RefreshToken,
-			&i.RefreshExpiresAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const getLatestPrivateKey = `-- name: GetLatestPrivateKey :one
@@ -201,6 +162,128 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, userID uuid.UUID) ([]Mon
 			&i.Name,
 			&i.CreatedAt,
 			&i.Visibility,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFriends = `-- name: ListFriends :many
+SELECT u.id, u.spotify_user_id, u.email, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+FROM friendships f
+JOIN users u
+  ON (u.id = CASE
+        WHEN f.user_a_id = $1 THEN f.user_b_id
+        ELSE f.user_a_id
+    END)
+WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
+  AND f.status = 'accepted'
+`
+
+func (q *Queries) ListFriends(ctx context.Context, userAID uuid.UUID) ([]User, error) {
+	rows, err := q.db.Query(ctx, listFriends, userAID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.SpotifyUserID,
+			&i.Email,
+			&i.SpotifyUserData,
+			&i.CreatedAt,
+			&i.RefreshToken,
+			&i.RefreshExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIncomingRequests = `-- name: ListIncomingRequests :many
+SELECT u.id, u.spotify_user_id, u.email, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+FROM friendships f
+JOIN users u
+ON (u.id = CASE
+        WHEN f.user_a_id = $1 THEN f.user_b_id
+        ELSE f.user_a_id
+    END)
+WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
+AND f.requester_id <> $1
+AND f.status = 'pending'
+`
+
+func (q *Queries) ListIncomingRequests(ctx context.Context, userAID uuid.UUID) ([]User, error) {
+	rows, err := q.db.Query(ctx, listIncomingRequests, userAID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.SpotifyUserID,
+			&i.Email,
+			&i.SpotifyUserData,
+			&i.CreatedAt,
+			&i.RefreshToken,
+			&i.RefreshExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOutgoingRequests = `-- name: ListOutgoingRequests :many
+SELECT u.id, u.spotify_user_id, u.email, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+FROM friendships f
+JOIN users u
+ON (u.id = CASE
+        WHEN f.user_a_id = $1 THEN f.user_b_id
+        ELSE f.user_a_id
+    END)
+WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
+AND f.requester_id = $1
+AND f.status = 'pending'
+`
+
+func (q *Queries) ListOutgoingRequests(ctx context.Context, userAID uuid.UUID) ([]User, error) {
+	rows, err := q.db.Query(ctx, listOutgoingRequests, userAID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.SpotifyUserID,
+			&i.Email,
+			&i.SpotifyUserData,
+			&i.CreatedAt,
+			&i.RefreshToken,
+			&i.RefreshExpiresAt,
 		); err != nil {
 			return nil, err
 		}

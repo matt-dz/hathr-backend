@@ -59,8 +59,8 @@ UPDATE monthly_playlists
 
 
 -- name: CreateFriendRequest :exec
-INSERT INTO friendships (user_a_id, user_b_id)
-VALUES (LEAST($1, $2), GREATEST($1, $2));
+INSERT INTO friendships (user_a_id, user_b_id, requester_id)
+VALUES (LEAST($1, $2), GREATEST($1, $2), $3);
 
 -- name: AcceptFriendRequest :execrows
 UPDATE friendships
@@ -84,13 +84,37 @@ UPDATE friendships
 DELETE FROM friendships
     WHERE user_a_id = LEAST($1, $2) AND user_b_id = GREATEST($1, $2);
 
--- name: GetFriends :many
+-- name: ListFriends :many
 SELECT u.*
 FROM friendships f
 JOIN users u
   ON (u.id = CASE
-                WHEN f.user_a_id = $1 THEN f.user_b_id
-                ELSE f.user_a_id
-             END)
+        WHEN f.user_a_id = $1 THEN f.user_b_id
+        ELSE f.user_a_id
+    END)
 WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
   AND f.status = 'accepted';
+
+-- name: ListOutgoingRequests :many
+SELECT u.*
+FROM friendships f
+JOIN users u
+ON (u.id = CASE
+        WHEN f.user_a_id = $1 THEN f.user_b_id
+        ELSE f.user_a_id
+    END)
+WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
+AND f.requester_id = $1
+AND f.status = 'pending';
+
+-- name: ListIncomingRequests :many
+SELECT u.*
+FROM friendships f
+JOIN users u
+ON (u.id = CASE
+        WHEN f.user_a_id = $1 THEN f.user_b_id
+        ELSE f.user_a_id
+    END)
+WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
+AND f.requester_id <> $1
+AND f.status = 'pending';

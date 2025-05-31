@@ -262,4 +262,16 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	playlist.Use(AuthorizeRequest)
 	playlist.Use(AuthorizeAdminRequest)
 	playlist.HandleFunc("/", handlers.CreateMonthlyPlaylist).Methods("POST")
+
+	friendships := s.PathPrefix("/friendships").Subrouter()
+	friendships.Use(AuthorizeRequest)
+	friendships.HandleFunc("", handlers.ListFriends).Methods("GET", "OPTIONS")
+	friendships.HandleFunc("/{id}", handlers.RemoveFriend).Methods("DELETE", "OPTIONS")
+
+	friendRequests := s.PathPrefix("/friend-requests").Subrouter()
+	friendRequests.HandleFunc("", handlers.ListRequests).Methods("GET", "OPTIONS")
+	friendRequests.HandleFunc("", handlers.CreateFriendRequest).Methods("POST", "OPTIONS")
+	friendRequests.HandleFunc("/{id}", handlers.RespondToFriendRequest).Methods("PATCH", "OPTIONS")
+	friendRequests.HandleFunc("/{id}", handlers.DeleteFriendRequest).Methods("DELETE", "OPTIONS")
+
 }

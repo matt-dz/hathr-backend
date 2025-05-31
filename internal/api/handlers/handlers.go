@@ -534,3 +534,10 @@ func UpdateVisibility(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Successfully updated visibility")
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func CreateFriendRequest(w http.ResponseWriter, r *http.Request)    {}
+func DeleteFriendRequest(w http.ResponseWriter, r *http.Request)    {}
+func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {}
+func RemoveFriend(w http.ResponseWriter, r *http.Request)           {}
+func ListFriends(w http.ResponseWriter, r *http.Request)            {}
+func ListRequests(w http.ResponseWriter, r *http.Request)           {}

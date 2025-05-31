@@ -102,6 +102,7 @@ func (ns NullPlaylistVisibility) Value() (driver.Value, error) {
 type Friendship struct {
 	UserAID     uuid.UUID
 	UserBID     uuid.UUID
+	RequesterID uuid.UUID
 	Status      FriendshipStatus
 	RequestedAt pgtype.Timestamp
 	RespondedAt pgtype.Timestamp

@@ -48,3 +48,7 @@ type GetPlaylist struct {
 	CreatedAt  time.Time                   `json:"created_at"`
 	Visibility database.PlaylistVisibility `json:"visibility"`
 }
+
+type ListFriends struct {
+	Friends []models.PublicUser `json:"friends"`
+}

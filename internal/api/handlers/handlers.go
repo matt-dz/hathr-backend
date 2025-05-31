@@ -396,7 +396,7 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := uuid.Validate(userID); err != nil {
-		env.Logger.ErrorContext(ctx, "Invalid userID", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
 	}
@@ -539,5 +539,78 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request)    {}
 func DeleteFriendRequest(w http.ResponseWriter, r *http.Request)    {}
 func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {}
 func RemoveFriend(w http.ResponseWriter, r *http.Request)           {}
-func ListFriends(w http.ResponseWriter, r *http.Request)            {}
-func ListRequests(w http.ResponseWriter, r *http.Request)           {}
+func ListFriends(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// List friends
+	env.Logger.DebugContext(ctx, "Listing friends from DB")
+	friends, err := env.Database.ListFriends(ctx, uuid.MustParse(userID))
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to list friends", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Process friends data
+	env.Logger.DebugContext(ctx, "Processing friends data")
+	responseFriends := make([]models.PublicUser, len(friends))
+	for i, f := range friends {
+		var spotifyUserData spotifyModels.User
+		if err := json.Unmarshal(f.SpotifyUserData, &spotifyUserData); err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify user data", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		responseFriends[i] = models.PublicUser{
+			ID:        f.ID,
+			CreatedAt: f.CreatedAt.Time,
+			SpotifyUserData: spotifyModels.PublicUser{
+				DisplayName:  spotifyUserData.DisplayName,
+				ExternalURLs: spotifyUserData.ExternalURLs,
+				ID:           spotifyUserData.ID,
+				Images:       spotifyUserData.Images,
+				URI:          spotifyUserData.URI,
+			},
+		}
+	}
+
+	// Encode response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	err = json.NewEncoder(w).Encode(responses.ListFriends{
+		Friends: responseFriends,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode friends response", slog.Any("error", err))
+		http.Error(w, "Failed to encode friends response", http.StatusInternalServerError)
+		return
+	}
+}
+func ListRequests(w http.ResponseWriter, r *http.Request) {}

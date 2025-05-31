@@ -46,3 +46,11 @@ type User struct {
 	Type         string       `json:"type"`
 	URI          string       `json:"uri"`
 }
+
+type PublicUser struct {
+	DisplayName  string       `json:"display_name"`
+	ExternalURLs ExternalURLs `json:"external_urls"`
+	ID           string       `json:"id"`
+	Images       []Image      `json:"images"`
+	URI          string       `json:"uri"`
+}

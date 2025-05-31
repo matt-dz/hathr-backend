@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	spotifyModels "hathr-backend/internal/spotify/models"
+
 	"github.com/google/uuid"
 )
 
@@ -53,4 +55,10 @@ type MonthlyPlaylist struct {
 	Month     Month     `json:"month" validate:"required,validateFn"`
 	Name      string    `json:"name" validate:"required"`
 	CreatedAt time.Time `json:"created_at" validate:"required"`
+}
+
+type PublicUser struct {
+	ID              uuid.UUID                `json:"id"`
+	CreatedAt       time.Time                `json:"created_at"`
+	SpotifyUserData spotifyModels.PublicUser `json:"spotify_user_data"`
 }

@@ -884,9 +884,67 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: Send notification to the user about the friend request
+
 	env.Logger.DebugContext(ctx, "Successfully created friend request")
 	w.WriteHeader(http.StatusCreated)
 }
 
-func DeleteFriendRequest(w http.ResponseWriter, r *http.Request)    {}
+func CancelFriendRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+	friendID := mux.Vars(r)["id"]
+
+	// Validate request parameters
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID in JWT", slog.Any("error", err))
+		http.Error(w, "Invalid user ID in JWT", http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(friendID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid friend ID in route parameter", slog.Any("error", err))
+		http.Error(w, "Invalid friend ID in route parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Remove friend request in the database
+	env.Logger.DebugContext(ctx, "Removing friend request in DB")
+	rows, err := env.Database.CancelFriendRequest(ctx, database.CancelFriendRequestParams{
+		UserAID:     uuid.MustParse(userID),
+		UserBID:     uuid.MustParse(friendID),
+		RequesterID: uuid.MustParse(userID),
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to cancel friend request", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if rows == 0 {
+		env.Logger.ErrorContext(ctx, "No rows affected. Friend request not found.", slog.Any("error", err))
+		http.Error(w, "Friend request not found", http.StatusNotFound)
+		return
+	}
+
+	env.Logger.DebugContext(ctx, "Successfully canceled friend request")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {}

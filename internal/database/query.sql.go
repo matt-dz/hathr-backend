@@ -34,6 +34,27 @@ func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendReque
 	return result.RowsAffected(), nil
 }
 
+const cancelFriendRequest = `-- name: CancelFriendRequest :execrows
+DELETE FROM friendships
+    WHERE user_a_id = LEAST($1::uuid, $2::uuid) AND user_b_id = GREATEST($1::uuid, $2::uuid)
+    AND status = 'pending'
+    AND requester_id = $3::uuid
+`
+
+type CancelFriendRequestParams struct {
+	UserAID     uuid.UUID
+	UserBID     uuid.UUID
+	RequesterID uuid.UUID
+}
+
+func (q *Queries) CancelFriendRequest(ctx context.Context, arg CancelFriendRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelFriendRequest, arg.UserAID, arg.UserBID, arg.RequesterID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createFriendRequest = `-- name: CreateFriendRequest :exec
 INSERT INTO friendships (user_a_id, user_b_id, requester_id)
 VALUES (LEAST($1::uuid, $2::uuid), GREATEST($1::uuid, $2::uuid), $3::uuid)

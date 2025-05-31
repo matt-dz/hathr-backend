@@ -62,6 +62,12 @@ UPDATE monthly_playlists
 INSERT INTO friendships (user_a_id, user_b_id, requester_id)
 VALUES (LEAST(@user_a_id::uuid, @user_b_id::uuid), GREATEST(@user_a_id::uuid, @user_b_id::uuid), @requester_id::uuid);
 
+-- name: CancelFriendRequest :execrows
+DELETE FROM friendships
+    WHERE user_a_id = LEAST(@user_a_id::uuid, @user_b_id::uuid) AND user_b_id = GREATEST(@user_a_id::uuid, @user_b_id::uuid)
+    AND status = 'pending'
+    AND requester_id = @requester_id::uuid;
+
 -- name: AcceptFriendRequest :execrows
 UPDATE friendships
     SET

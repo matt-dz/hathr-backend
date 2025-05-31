@@ -12,6 +12,50 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type FriendshipStatus string
+
+const (
+	FriendshipStatusPending  FriendshipStatus = "pending"
+	FriendshipStatusAccepted FriendshipStatus = "accepted"
+	FriendshipStatusRejected FriendshipStatus = "rejected"
+	FriendshipStatusBlocked  FriendshipStatus = "blocked"
+)
+
+func (e *FriendshipStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FriendshipStatus(s)
+	case string:
+		*e = FriendshipStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FriendshipStatus: %T", src)
+	}
+	return nil
+}
+
+type NullFriendshipStatus struct {
+	FriendshipStatus FriendshipStatus
+	Valid            bool // Valid is true if FriendshipStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFriendshipStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.FriendshipStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FriendshipStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFriendshipStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FriendshipStatus), nil
+}
+
 type PlaylistVisibility string
 
 const (
@@ -53,6 +97,14 @@ func (ns NullPlaylistVisibility) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.PlaylistVisibility), nil
+}
+
+type Friendship struct {
+	UserAID     uuid.UUID
+	UserBID     uuid.UUID
+	Status      FriendshipStatus
+	RequestedAt pgtype.Timestamp
+	RespondedAt pgtype.Timestamp
 }
 
 type MonthlyPlaylist struct {

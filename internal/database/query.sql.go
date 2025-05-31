@@ -11,6 +11,47 @@ import (
 	"github.com/google/uuid"
 )
 
+const acceptFriendRequest = `-- name: AcceptFriendRequest :execrows
+UPDATE friendships
+    SET
+        status = 'accepted',
+        responded_at = NOW()
+    WHERE
+        user_a_id = LEAST($1, $2) AND
+        user_b_id = GREATEST($1, $2)
+`
+
+type AcceptFriendRequestParams struct {
+	UserAID   uuid.UUID
+	UserAID_2 uuid.UUID
+}
+
+func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, acceptFriendRequest, arg.UserAID, arg.UserAID_2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const createFriendRequest = `-- name: CreateFriendRequest :execrows
+INSERT INTO friendships (user_a_id, user_b_id)
+VALUES (LEAST($1, $2), GREATEST($1, $2))
+`
+
+type CreateFriendRequestParams struct {
+	Column1 interface{}
+	Column2 interface{}
+}
+
+func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createFriendRequest, arg.Column1, arg.Column2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createMonthlyPlaylist = `-- name: CreateMonthlyPlaylist :one
 INSERT INTO monthly_playlists(user_id, tracks, year, month, name)
 VALUES ($1, $2, $3, $4, $5)
@@ -132,6 +173,47 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, userID uuid.UUID) ([]Mon
 		return nil, err
 	}
 	return items, nil
+}
+
+const rejectFriendRequest = `-- name: RejectFriendRequest :execrows
+UPDATE friendships
+    SET
+        status = 'rejected',
+        responded_at = NOW()
+    WHERE
+        user_a_id = LEAST($1, $2) AND
+        user_b_id = GREATEST($1, $2)
+`
+
+type RejectFriendRequestParams struct {
+	UserAID   uuid.UUID
+	UserAID_2 uuid.UUID
+}
+
+func (q *Queries) RejectFriendRequest(ctx context.Context, arg RejectFriendRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rejectFriendRequest, arg.UserAID, arg.UserAID_2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const removeFriendship = `-- name: RemoveFriendship :execrows
+DELETE FROM friendships
+    WHERE user_a_id = LEAST($1, $2) AND user_b_id = GREATEST($1, $2)
+`
+
+type RemoveFriendshipParams struct {
+	UserAID   uuid.UUID
+	UserAID_2 uuid.UUID
+}
+
+func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipParams) (int64, error) {
+	result, err := q.db.Exec(ctx, removeFriendship, arg.UserAID, arg.UserAID_2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateVisibility = `-- name: UpdateVisibility :execrows

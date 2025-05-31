@@ -11,6 +11,27 @@ CREATE TABLE users (
     PRIMARY KEY (id)
 );
 
+CREATE TYPE friendship_status AS ENUM(
+    'pending',
+    'accepted',
+    'rejected',
+    'blocked'
+);
+
+CREATE TABLE friendships (
+    user_a_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_b_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status friendship_status NOT NULL DEFAULT 'pending',
+    requested_at TIMESTAMP NOT NULL DEFAULT now(),
+    responded_at TIMESTAMP NOT NULL,
+    PRIMARY KEY (user_a_id, user_b_id),
+    -- enforce a single row per pair, no matter who is “first”
+    CHECK (user_a_id < user_b_id)
+);
+
+CREATE INDEX ON friendships (user_a_id, status);
+CREATE INDEX ON friendships (user_b_id, status);
+
 CREATE TYPE playlist_visibility
 AS
 ENUM('public', 'friends', 'private');

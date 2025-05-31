@@ -56,3 +56,30 @@ SELECT * FROM users WHERE refresh_token = $1;
 UPDATE monthly_playlists
     SET visibility = $1
     WHERE id = $2 AND user_id = $3;
+
+
+-- name: CreateFriendRequest :exec
+INSERT INTO friendships (user_a_id, user_b_id)
+VALUES (LEAST($1, $2), GREATEST($1, $2));
+
+-- name: AcceptFriendRequest :execrows
+UPDATE friendships
+    SET
+        status = 'accepted',
+        responded_at = NOW()
+    WHERE
+        user_a_id = LEAST($1, $2) AND
+        user_b_id = GREATEST($1, $2);
+
+-- name: RejectFriendRequest :execrows
+UPDATE friendships
+    SET
+        status = 'rejected',
+        responded_at = NOW()
+    WHERE
+        user_a_id = LEAST($1, $2) AND
+        user_b_id = GREATEST($1, $2);
+
+-- name: RemoveFriendship :execrows
+DELETE FROM friendships
+    WHERE user_a_id = LEAST($1, $2) AND user_b_id = GREATEST($1, $2);

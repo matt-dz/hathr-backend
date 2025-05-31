@@ -36,3 +36,7 @@ type RefreshSession struct {
 type UpdateVisibility struct {
 	Visibility database.PlaylistVisibility `json:"visibility" validate:"required,oneof=public friends private"`
 }
+
+type CreateFriendRequest struct {
+	UserID uuid.UUID `json:"user_id" validate:"required"`
+}

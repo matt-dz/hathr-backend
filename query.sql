@@ -60,7 +60,7 @@ UPDATE monthly_playlists
 
 -- name: CreateFriendRequest :exec
 INSERT INTO friendships (user_a_id, user_b_id, requester_id)
-VALUES (LEAST($1, $2), GREATEST($1, $2), $3);
+VALUES (LEAST(@user_a_id::uuid, @user_b_id::uuid), GREATEST(@user_a_id::uuid, @user_b_id::uuid), @requester_id::uuid);
 
 -- name: AcceptFriendRequest :execrows
 UPDATE friendships

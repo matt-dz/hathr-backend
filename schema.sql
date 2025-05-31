@@ -29,10 +29,10 @@ CREATE TABLE friendships (
     PRIMARY KEY (user_a_id, user_b_id),
 
     -- enforce a single row per pair, no matter who is “first”
-    CHECK (user_a_id < user_b_id),
+    CONSTRAINT canonical_form CHECK (user_a_id < user_b_id),
 
     -- ensure requester_id is one of the users in the friendship
-    CHECK (user_a_id = requester_id OR user_b_id = requester_id)
+    CONSTRAINT requester_is_user CHECK (user_a_id = requester_id OR user_b_id = requester_id)
 );
 
 CREATE INDEX ON friendships (user_a_id, status);

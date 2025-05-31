@@ -30,6 +30,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/zmb3/spotify/v2"
 )
 
@@ -812,6 +813,80 @@ func ListRequests(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func CreateFriendRequest(w http.ResponseWriter, r *http.Request)    {}
+func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+	var friendRequest requests.CreateFriendRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	err = hathrJson.DecodeJson(&friendRequest, decoder)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate request body
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	if err := validate.Struct(friendRequest); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Creating friend request in the database
+	var pgErr *pgconn.PgError
+	env.Logger.DebugContext(ctx, "Creating friend request in DB")
+	err = env.Database.CreateFriendRequest(ctx, database.CreateFriendRequestParams{
+		UserAID:     uuid.MustParse(userID),
+		UserBID:     friendRequest.UserID,
+		RequesterID: uuid.MustParse(userID),
+	})
+
+	if errors.As(err, &pgErr) {
+		if pgErr.Code == "23505" { // unique_violation
+			env.Logger.ErrorContext(ctx, "Friend request already exists", slog.Any("error", err))
+			http.Error(w, "Friend request already sent", http.StatusConflict)
+			return
+		}
+		if pgErr.Code == "23514" { // check_violation
+			env.Logger.ErrorContext(ctx, "check violation", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusBadRequest)
+			return
+		}
+	}
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to create friend request", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	env.Logger.DebugContext(ctx, "Successfully created friend request")
+	w.WriteHeader(http.StatusCreated)
+}
+
 func DeleteFriendRequest(w http.ResponseWriter, r *http.Request)    {}
 func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {}

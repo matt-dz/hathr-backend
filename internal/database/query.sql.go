@@ -36,17 +36,17 @@ func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendReque
 
 const createFriendRequest = `-- name: CreateFriendRequest :exec
 INSERT INTO friendships (user_a_id, user_b_id, requester_id)
-VALUES (LEAST($1, $2), GREATEST($1, $2), $3)
+VALUES (LEAST($1::uuid, $2::uuid), GREATEST($1::uuid, $2::uuid), $3::uuid)
 `
 
 type CreateFriendRequestParams struct {
-	Column1     interface{}
-	Column2     interface{}
+	UserAID     uuid.UUID
+	UserBID     uuid.UUID
 	RequesterID uuid.UUID
 }
 
 func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) error {
-	_, err := q.db.Exec(ctx, createFriendRequest, arg.Column1, arg.Column2, arg.RequesterID)
+	_, err := q.db.Exec(ctx, createFriendRequest, arg.UserAID, arg.UserBID, arg.RequesterID)
 	return err
 }
 

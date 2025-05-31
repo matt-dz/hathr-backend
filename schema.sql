@@ -25,7 +25,7 @@ CREATE TABLE friendships (
 
     status friendship_status NOT NULL DEFAULT 'pending',
     requested_at TIMESTAMP NOT NULL DEFAULT now(),
-    responded_at TIMESTAMP NOT NULL,
+    responded_at TIMESTAMP,
     PRIMARY KEY (user_a_id, user_b_id),
 
     -- enforce a single row per pair, no matter who is “first”

@@ -58,7 +58,7 @@ func listOutgoingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UU
 
 	// Process requests data
 	env.Logger.DebugContext(ctx, "Processing friend requests data")
-	response = make([]models.FriendRequest, len(response))
+	response = make([]models.FriendRequest, len(friendRequests))
 	for i, req := range friendRequests {
 		var spotifyUserData spotifyModels.User
 		err := json.Unmarshal(req.User.SpotifyUserData, &spotifyUserData)
@@ -68,8 +68,11 @@ func listOutgoingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UU
 			return response, err
 		}
 		response[i] = models.FriendRequest{
-			UserAID: req.Friendship.UserAID,
-			UserBID: req.Friendship.UserBID,
+			UserAID:     req.Friendship.UserAID,
+			UserBID:     req.Friendship.UserBID,
+			RequesterID: req.Friendship.RequesterID,
+			Status:      string(req.Friendship.Status),
+			RequestedAt: req.Friendship.RequestedAt.Time,
 			FriendData: models.PublicUser{
 				ID:              req.User.ID,
 				CreatedAt:       req.User.CreatedAt.Time,
@@ -86,7 +89,7 @@ func listIncomingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UU
 	response := make([]models.FriendRequest, 0)
 
 	env.Logger.DebugContext(ctx, "Listing incoming friend requests from DB")
-	friendRequests, err := env.Database.ListOutgoingRequests(ctx, userID)
+	friendRequests, err := env.Database.ListIncomingRequests(ctx, userID)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to list friend requests", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -95,7 +98,7 @@ func listIncomingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UU
 
 	// Process requests data
 	env.Logger.DebugContext(ctx, "Processing friend requests data")
-	response = make([]models.FriendRequest, len(response))
+	response = make([]models.FriendRequest, len(friendRequests))
 	for i, req := range friendRequests {
 		var spotifyUserData spotifyModels.User
 		err := json.Unmarshal(req.User.SpotifyUserData, &spotifyUserData)
@@ -105,8 +108,11 @@ func listIncomingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UU
 			return response, err
 		}
 		response[i] = models.FriendRequest{
-			UserAID: req.Friendship.UserAID,
-			UserBID: req.Friendship.UserBID,
+			UserAID:     req.Friendship.UserAID,
+			UserBID:     req.Friendship.UserBID,
+			RequesterID: req.Friendship.RequesterID,
+			Status:      string(req.Friendship.Status),
+			RequestedAt: req.Friendship.RequestedAt.Time,
 			FriendData: models.PublicUser{
 				ID:              req.User.ID,
 				CreatedAt:       req.User.CreatedAt.Time,
@@ -791,7 +797,7 @@ func ListRequests(w http.ResponseWriter, r *http.Request) {
 
 	// List friend requests
 	var friendRequests []models.FriendRequest
-	if requestType == "outgoing" {
+	if requestType == "incoming" {
 		friendRequests, err = listIncomingRequests(env, ctx, uuid.MustParse(userID), w)
 	} else {
 		friendRequests, err = listOutgoingRequests(env, ctx, uuid.MustParse(userID), w)

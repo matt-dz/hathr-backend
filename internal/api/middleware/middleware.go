@@ -233,7 +233,7 @@ func MatchUserIDs(next http.Handler) http.Handler {
 
 func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	router.Use(HandleCORS)
-	router.Use(RecoverMiddleware)
+	// router.Use(RecoverMiddleware)
 	router.Use(InjectEnvironment(env))
 	router.Use(LogRequest)
 

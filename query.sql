@@ -83,3 +83,14 @@ UPDATE friendships
 -- name: RemoveFriendship :execrows
 DELETE FROM friendships
     WHERE user_a_id = LEAST($1, $2) AND user_b_id = GREATEST($1, $2);
+
+-- name: GetFriends :many
+SELECT u.*
+FROM friendships f
+JOIN users u
+  ON (u.id = CASE
+                WHEN f.user_a_id = $1 THEN f.user_b_id
+                ELSE f.user_a_id
+             END)
+WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
+  AND f.status = 'accepted';

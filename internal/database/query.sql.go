@@ -34,7 +34,7 @@ func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendReque
 	return result.RowsAffected(), nil
 }
 
-const createFriendRequest = `-- name: CreateFriendRequest :execrows
+const createFriendRequest = `-- name: CreateFriendRequest :exec
 INSERT INTO friendships (user_a_id, user_b_id)
 VALUES (LEAST($1, $2), GREATEST($1, $2))
 `
@@ -44,12 +44,9 @@ type CreateFriendRequestParams struct {
 	Column2 interface{}
 }
 
-func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) (int64, error) {
-	result, err := q.db.Exec(ctx, createFriendRequest, arg.Column1, arg.Column2)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) error {
+	_, err := q.db.Exec(ctx, createFriendRequest, arg.Column1, arg.Column2)
+	return err
 }
 
 const createMonthlyPlaylist = `-- name: CreateMonthlyPlaylist :one
@@ -77,6 +74,46 @@ func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPl
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const getFriends = `-- name: GetFriends :many
+SELECT u.id, u.spotify_user_id, u.email, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+FROM friendships f
+JOIN users u
+  ON (u.id = CASE
+                WHEN f.user_a_id = $1 THEN f.user_b_id
+                ELSE f.user_a_id
+             END)
+WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
+  AND f.status = 'accepted'
+`
+
+func (q *Queries) GetFriends(ctx context.Context, userAID uuid.UUID) ([]User, error) {
+	rows, err := q.db.Query(ctx, getFriends, userAID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.SpotifyUserID,
+			&i.Email,
+			&i.SpotifyUserData,
+			&i.CreatedAt,
+			&i.RefreshToken,
+			&i.RefreshExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getLatestPrivateKey = `-- name: GetLatestPrivateKey :one

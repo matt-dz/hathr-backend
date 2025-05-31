@@ -866,27 +866,34 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 	// Creating friend request in the database
 	var pgErr *pgconn.PgError
 	env.Logger.DebugContext(ctx, "Creating friend request in DB")
-	err = env.Database.CreateFriendRequest(ctx, database.CreateFriendRequestParams{
-		UserAID:     uuid.MustParse(userID),
-		UserBID:     friendRequest.UserID,
-		RequesterID: uuid.MustParse(userID),
+	rows, err := env.Database.CreateFriendRequest(ctx, database.CreateFriendRequestParams{
+		Requester: uuid.MustParse(userID),
+		Requestee: friendRequest.UserID,
 	})
 
 	if errors.As(err, &pgErr) {
-		if pgErr.Code == "23505" { // unique_violation
-			env.Logger.ErrorContext(ctx, "Friend request already exists", slog.Any("error", err))
-			http.Error(w, "Friend request already sent", http.StatusConflict)
+		// foreign_key_violation - this is reached if the user tries to befriend a user that does not exist
+		if pgErr.Code == "23503" {
+			env.Logger.ErrorContext(ctx, "Foreign key violation - user not found", slog.Any("error", err))
+			http.Error(w, "User not found", http.StatusNotFound)
 			return
 		}
-		if pgErr.Code == "23514" { // check_violation
+
+		// canonical_form violation - only way this is reached is if the user tries to befriend themselves
+		if pgErr.Code == "23514" && pgErr.ConstraintName == "canonical_form" {
 			env.Logger.ErrorContext(ctx, "check violation", slog.Any("error", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusBadRequest)
+			http.Error(w, "User cannot be-friend themself", http.StatusConflict)
 			return
 		}
 	}
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to create friend request", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if rows == 0 {
+		env.Logger.ErrorContext(ctx, "No rows affected - request either already sent or users are already friends.")
+		http.Error(w, "Request already sent or users are already friends", http.StatusConflict)
 		return
 	}
 
@@ -1009,13 +1016,13 @@ func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {
 	var rows int64
 	if friendRequest.Status == "accepted" {
 		rows, err = env.Database.AcceptFriendRequest(ctx, database.AcceptFriendRequestParams{
-			UserAID: uuid.MustParse(userID),
-			UserBID: uuid.MustParse(friendID),
+			Responder: uuid.MustParse(userID),
+			Respondee: uuid.MustParse(friendID),
 		})
 	} else {
 		rows, err = env.Database.RejectFriendRequest(ctx, database.RejectFriendRequestParams{
-			UserAID: uuid.MustParse(userID),
-			UserBID: uuid.MustParse(friendID),
+			Responder: uuid.MustParse(userID),
+			Respondee: uuid.MustParse(friendID),
 		})
 	}
 

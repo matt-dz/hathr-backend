@@ -58,9 +58,32 @@ UPDATE monthly_playlists
     WHERE id = $2 AND user_id = $3;
 
 
--- name: CreateFriendRequest :exec
-INSERT INTO friendships (user_a_id, user_b_id, requester_id)
-VALUES (LEAST(@user_a_id::uuid, @user_b_id::uuid), GREATEST(@user_a_id::uuid, @user_b_id::uuid), @requester_id::uuid);
+-- name: CreateFriendRequest :execrows
+INSERT INTO friendships (
+  user_a_id,
+  user_b_id,
+  requester_id,
+  status,
+  requested_at,
+  responded_at
+)
+VALUES (
+  LEAST(@requester::uuid, @requestee::uuid),
+  GREATEST(@requester::uuid, @requestee::uuid),
+  @requester::uuid,
+  'pending',
+  now(),
+  NULL
+)
+ON CONFLICT (user_a_id, user_b_id)
+DO UPDATE
+  SET
+    status       = 'pending',
+    requested_at = now(),
+    requester_id = EXCLUDED.requester_id,
+    responded_at = NULL
+  WHERE friendships.status = 'rejected';
+
 
 -- name: CancelFriendRequest :execrows
 DELETE FROM friendships
@@ -74,8 +97,10 @@ UPDATE friendships
         status = 'accepted',
         responded_at = NOW()
     WHERE
-        user_a_id = LEAST(@user_a_id::uuid, @user_b_id::uuid) AND
-        user_b_id = GREATEST(@user_a_id::uuid, @user_b_id::uuid);
+        status = 'pending' AND
+        user_a_id = LEAST(@responder::uuid, @respondee::uuid) AND
+        user_b_id = GREATEST(@responder::uuid, @respondee::uuid) AND
+        requester_id <> @responder::uuid;
 
 -- name: RejectFriendRequest :execrows
 UPDATE friendships
@@ -83,8 +108,10 @@ UPDATE friendships
         status = 'rejected',
         responded_at = NOW()
     WHERE
-        user_a_id = LEAST(@user_a_id::uuid, @user_b_id::uuid) AND
-        user_b_id = GREATEST(@user_a_id::uuid, @user_b_id::uuid);
+        status = 'pending' AND
+        user_a_id = LEAST(@responder::uuid, @respondee::uuid) AND
+        user_b_id = GREATEST(@responder::uuid, @respondee::uuid) AND
+        requester_id <> @responder::uuid;
 
 -- name: RemoveFriendship :execrows
 DELETE FROM friendships

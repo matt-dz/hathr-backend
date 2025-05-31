@@ -17,17 +17,19 @@ UPDATE friendships
         status = 'accepted',
         responded_at = NOW()
     WHERE
+        status = 'pending' AND
         user_a_id = LEAST($1::uuid, $2::uuid) AND
-        user_b_id = GREATEST($1::uuid, $2::uuid)
+        user_b_id = GREATEST($1::uuid, $2::uuid) AND
+        requester_id <> $1::uuid
 `
 
 type AcceptFriendRequestParams struct {
-	UserAID uuid.UUID
-	UserBID uuid.UUID
+	Responder uuid.UUID
+	Respondee uuid.UUID
 }
 
 func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendRequestParams) (int64, error) {
-	result, err := q.db.Exec(ctx, acceptFriendRequest, arg.UserAID, arg.UserBID)
+	result, err := q.db.Exec(ctx, acceptFriendRequest, arg.Responder, arg.Respondee)
 	if err != nil {
 		return 0, err
 	}
@@ -55,20 +57,44 @@ func (q *Queries) CancelFriendRequest(ctx context.Context, arg CancelFriendReque
 	return result.RowsAffected(), nil
 }
 
-const createFriendRequest = `-- name: CreateFriendRequest :exec
-INSERT INTO friendships (user_a_id, user_b_id, requester_id)
-VALUES (LEAST($1::uuid, $2::uuid), GREATEST($1::uuid, $2::uuid), $3::uuid)
+const createFriendRequest = `-- name: CreateFriendRequest :execrows
+INSERT INTO friendships (
+  user_a_id,
+  user_b_id,
+  requester_id,
+  status,
+  requested_at,
+  responded_at
+)
+VALUES (
+  LEAST($1::uuid, $2::uuid),
+  GREATEST($1::uuid, $2::uuid),
+  $1::uuid,
+  'pending',
+  now(),
+  NULL
+)
+ON CONFLICT (user_a_id, user_b_id)
+DO UPDATE
+  SET
+    status       = 'pending',
+    requested_at = now(),
+    requester_id = EXCLUDED.requester_id,
+    responded_at = NULL
+  WHERE friendships.status = 'rejected'
 `
 
 type CreateFriendRequestParams struct {
-	UserAID     uuid.UUID
-	UserBID     uuid.UUID
-	RequesterID uuid.UUID
+	Requester uuid.UUID
+	Requestee uuid.UUID
 }
 
-func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) error {
-	_, err := q.db.Exec(ctx, createFriendRequest, arg.UserAID, arg.UserBID, arg.RequesterID)
-	return err
+func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createFriendRequest, arg.Requester, arg.Requestee)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const createMonthlyPlaylist = `-- name: CreateMonthlyPlaylist :one
@@ -344,17 +370,19 @@ UPDATE friendships
         status = 'rejected',
         responded_at = NOW()
     WHERE
+        status = 'pending' AND
         user_a_id = LEAST($1::uuid, $2::uuid) AND
-        user_b_id = GREATEST($1::uuid, $2::uuid)
+        user_b_id = GREATEST($1::uuid, $2::uuid) AND
+        requester_id <> $1::uuid
 `
 
 type RejectFriendRequestParams struct {
-	UserAID uuid.UUID
-	UserBID uuid.UUID
+	Responder uuid.UUID
+	Respondee uuid.UUID
 }
 
 func (q *Queries) RejectFriendRequest(ctx context.Context, arg RejectFriendRequestParams) (int64, error) {
-	result, err := q.db.Exec(ctx, rejectFriendRequest, arg.UserAID, arg.UserBID)
+	result, err := q.db.Exec(ctx, rejectFriendRequest, arg.Responder, arg.Respondee)
 	if err != nil {
 		return 0, err
 	}

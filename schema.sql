@@ -1,9 +1,14 @@
+CREATE TYPE role AS ENUM(
+    'user',
+    'admin'
+);
+
 CREATE TABLE users (
     id UUID DEFAULT gen_random_uuid (),
     username TEXT UNIQUE,
     email TEXT NOT NULL,
     registered_at TIMESTAMP,
-    admin BOOLEAN DEFAULT FALSE,
+    role role NOT NULL DEFAULT 'user',
 
     spotify_user_id TEXT NOT NULL UNIQUE,
     spotify_user_data JSONB NOT NULL,

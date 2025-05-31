@@ -127,7 +127,7 @@ func listIncomingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UU
 func buildJWT(user database.User, spotifyData spotifyModels.User, key string) (string, error) {
 	return hathrJWT.CreateJWT(hathrJWT.JWTParams{
 		UserID:     user.ID.String(),
-		Admin:      user.Admin.Bool,
+		Role:       string(user.Role),
 		Registered: !user.RegisteredAt.Time.IsZero(),
 		SpotifyData: hathrJWT.SpotifyClaims{
 			DisplayName: spotifyData.DisplayName,

@@ -74,8 +74,8 @@ UPDATE friendships
         status = 'accepted',
         responded_at = NOW()
     WHERE
-        user_a_id = LEAST($1, $2) AND
-        user_b_id = GREATEST($1, $2);
+        user_a_id = LEAST(@user_a_id::uuid, @user_b_id::uuid) AND
+        user_b_id = GREATEST(@user_a_id::uuid, @user_b_id::uuid);
 
 -- name: RejectFriendRequest :execrows
 UPDATE friendships
@@ -83,8 +83,8 @@ UPDATE friendships
         status = 'rejected',
         responded_at = NOW()
     WHERE
-        user_a_id = LEAST($1, $2) AND
-        user_b_id = GREATEST($1, $2);
+        user_a_id = LEAST(@user_a_id::uuid, @user_b_id::uuid) AND
+        user_b_id = GREATEST(@user_a_id::uuid, @user_b_id::uuid);
 
 -- name: RemoveFriendship :execrows
 DELETE FROM friendships

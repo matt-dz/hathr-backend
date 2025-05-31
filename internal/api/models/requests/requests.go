@@ -40,3 +40,7 @@ type UpdateVisibility struct {
 type CreateFriendRequest struct {
 	UserID uuid.UUID `json:"user_id" validate:"required"`
 }
+
+type ResponseToFriendRequest struct {
+	Status string `json:"status" validate:"required,oneof=accepted rejected"`
+}

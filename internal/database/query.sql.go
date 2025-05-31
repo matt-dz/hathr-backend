@@ -17,17 +17,17 @@ UPDATE friendships
         status = 'accepted',
         responded_at = NOW()
     WHERE
-        user_a_id = LEAST($1, $2) AND
-        user_b_id = GREATEST($1, $2)
+        user_a_id = LEAST($1::uuid, $2::uuid) AND
+        user_b_id = GREATEST($1::uuid, $2::uuid)
 `
 
 type AcceptFriendRequestParams struct {
-	UserAID   uuid.UUID
-	UserAID_2 uuid.UUID
+	UserAID uuid.UUID
+	UserBID uuid.UUID
 }
 
 func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendRequestParams) (int64, error) {
-	result, err := q.db.Exec(ctx, acceptFriendRequest, arg.UserAID, arg.UserAID_2)
+	result, err := q.db.Exec(ctx, acceptFriendRequest, arg.UserAID, arg.UserBID)
 	if err != nil {
 		return 0, err
 	}
@@ -344,17 +344,17 @@ UPDATE friendships
         status = 'rejected',
         responded_at = NOW()
     WHERE
-        user_a_id = LEAST($1, $2) AND
-        user_b_id = GREATEST($1, $2)
+        user_a_id = LEAST($1::uuid, $2::uuid) AND
+        user_b_id = GREATEST($1::uuid, $2::uuid)
 `
 
 type RejectFriendRequestParams struct {
-	UserAID   uuid.UUID
-	UserAID_2 uuid.UUID
+	UserAID uuid.UUID
+	UserBID uuid.UUID
 }
 
 func (q *Queries) RejectFriendRequest(ctx context.Context, arg RejectFriendRequestParams) (int64, error) {
-	result, err := q.db.Exec(ctx, rejectFriendRequest, arg.UserAID, arg.UserAID_2)
+	result, err := q.db.Exec(ctx, rejectFriendRequest, arg.UserAID, arg.UserBID)
 	if err != nil {
 		return 0, err
 	}

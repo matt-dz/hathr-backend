@@ -947,4 +947,82 @@ func CancelFriendRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {}
+func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	friendID := mux.Vars(r)["id"]
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+	var friendRequest requests.ResponseToFriendRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	err = hathrJson.DecodeJson(&friendRequest, decoder)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate request body
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	if err := validate.Struct(friendRequest); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(friendID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid friend ID in route parameter", slog.Any("error", err))
+		http.Error(w, "Invalid friend ID in route parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Respond to friend request in the database
+	env.Logger.DebugContext(ctx, "Updating friend request in DB")
+	var rows int64
+	if friendRequest.Status == "accepted" {
+		rows, err = env.Database.AcceptFriendRequest(ctx, database.AcceptFriendRequestParams{
+			UserAID: uuid.MustParse(userID),
+			UserBID: uuid.MustParse(friendID),
+		})
+	} else {
+		rows, err = env.Database.RejectFriendRequest(ctx, database.RejectFriendRequestParams{
+			UserAID: uuid.MustParse(userID),
+			UserBID: uuid.MustParse(friendID),
+		})
+	}
+
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to respond to friend request", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if rows == 0 {
+		env.Logger.ErrorContext(ctx, "No rows affected. Friend request not found.", slog.Any("error", err))
+		http.Error(w, "Friend request not found", http.StatusNotFound)
+		return
+	}
+
+	env.Logger.DebugContext(ctx, "Successfully responded to friend request")
+}

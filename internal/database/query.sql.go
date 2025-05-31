@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const acceptFriendRequest = `-- name: AcceptFriendRequest :execrows
@@ -470,6 +471,36 @@ func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipPara
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const signUpUser = `-- name: SignUpUser :one
+UPDATE users
+SET username = $1, registered_at = now()
+WHERE id = $2
+RETURNING id, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
+`
+
+type SignUpUserParams struct {
+	Username pgtype.Text
+	ID       uuid.UUID
+}
+
+func (q *Queries) SignUpUser(ctx context.Context, arg SignUpUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, signUpUser, arg.Username, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.RegisteredAt,
+		&i.Role,
+		&i.SpotifyUserID,
+		&i.SpotifyUserData,
+		&i.CreatedAt,
+		&i.RefreshToken,
+		&i.RefreshExpiresAt,
+	)
+	return i, err
 }
 
 const updateVisibility = `-- name: UpdateVisibility :execrows

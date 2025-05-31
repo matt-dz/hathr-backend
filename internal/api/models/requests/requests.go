@@ -44,3 +44,7 @@ type CreateFriendRequest struct {
 type ResponseToFriendRequest struct {
 	Status string `json:"status" validate:"required,oneof=accepted rejected"`
 }
+
+type CompleteSignup struct {
+	Username string `json:"username" validate:"required,alphanum,containsany=_-."`
+}

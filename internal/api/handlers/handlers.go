@@ -31,6 +31,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/zmb3/spotify/v2"
 )
 
@@ -257,11 +258,11 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 	key, err := env.Database.GetLatestPrivateKey(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.Logger.ErrorContext(ctx, "No private key to retrieve", slog.Any("error", err))
-		http.Error(w, "No private key to retrieve", http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	} else if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to retrieve private key", slog.Any("error", err))
-		http.Error(w, "Unable to retrieve private key", http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -270,7 +271,7 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 	signedJWT, err := buildJWT(dbUser, spotifyUser, key.Value)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
-		http.Error(w, "Unable to create JWT", http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -285,6 +286,123 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to encode response", http.StatusInternalServerError)
 		return
 	}
+}
+
+func CompleteSignup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	var signupRequest requests.CompleteSignup
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
+	err := hathrJson.DecodeJson(&signupRequest, decoder)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	validator := validator.New(validator.WithRequiredStructEnabled())
+	if err := validator.Struct(signupRequest); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if len(signupRequest.Username) > 20 {
+		env.Logger.ErrorContext(ctx, "Username too long", slog.Int("length", len(signupRequest.Username)))
+		http.Error(w, "Username too long", http.StatusBadRequest)
+		return
+	}
+
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Sign up user
+	var pgErr *pgconn.PgError
+	env.Logger.DebugContext(ctx, "Updating user in database")
+	dbUser, err := env.Database.SignUpUser(ctx, database.SignUpUserParams{
+		Username: pgtype.Text{
+			String: signupRequest.Username,
+			Valid:  true,
+		},
+		ID: uuid.MustParse(userID),
+	})
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
+		env.Logger.ErrorContext(ctx, "Username taken", slog.Any("error", err))
+		http.Error(w, "Username taken", http.StatusConflict)
+		return
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.Logger.ErrorContext(ctx, "User not found or already registered", slog.Any("error", err))
+		http.Error(w, "User not found or already registered", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to sign up user", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Unmarshal spotify data
+	env.Logger.DebugContext(ctx, "Unmarshaling spotify data")
+	var spotifyUser spotifyModels.User
+	err = json.Unmarshal(dbUser.SpotifyUserData, &spotifyUser)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify data", slog.Any("error", err))
+		http.Error(w, "Unable to unmarshal user data", http.StatusInternalServerError)
+		return
+	}
+
+	// Retrieve private key for JWT signing
+	env.Logger.DebugContext(ctx, "Retrieving private key")
+	key, err := env.Database.GetLatestPrivateKey(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.Logger.ErrorContext(ctx, "No private key to retrieve", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	} else if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to retrieve private key", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Create JWT for user
+	env.Logger.DebugContext(ctx, "Creating JWT")
+	signedJWT, err := buildJWT(dbUser, spotifyUser, key.Value)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Return JWT
+	w.WriteHeader(http.StatusNoContent)
+	w.Header().Add("Authorization", fmt.Sprintf("Bearer %s", signedJWT))
 }
 
 func RefreshSession(w http.ResponseWriter, r *http.Request) {

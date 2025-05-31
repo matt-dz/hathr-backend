@@ -252,6 +252,10 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	s.HandleFunc("/login/spotify", handlers.SpotifyLogin).Methods("POST")
 	s.HandleFunc("/refresh", handlers.RefreshSession).Methods("POST")
 
+	signup := s.PathPrefix("/complete-signup").Subrouter()
+	signup.Use(AuthorizeRequest)
+	signup.HandleFunc("", handlers.CompleteSignup).Methods("POST", "OPTIONS")
+
 	playlists := s.PathPrefix("/me/playlists").Subrouter()
 	playlists.Use(AuthorizeRequest)
 	playlists.HandleFunc("", handlers.GetUserPlaylists).Methods("GET", "OPTIONS")

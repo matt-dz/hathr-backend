@@ -113,7 +113,7 @@ func HandleCORS(next http.Handler) http.Handler {
 			origin = os.Getenv("ORIGIN_URL")
 		}
 		w.Header().Add("Access-Control-Allow-Origin", origin)
-		w.Header().Add("Access-Control-Allow-Methods", "POST, GET, PUT, OPTIONS, DELETE")
+		w.Header().Add("Access-Control-Allow-Methods", "POST, GET, PUT, OPTIONS, DELETE, PATCH")
 		w.Header().Add("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization")
 		w.Header().Add("Access-Control-Expose-Headers", "Authorization")
 		w.Header().Add("Access-Control-Allow-Credentials", "true")
@@ -241,7 +241,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods("OPTIONS")
-	router.HandleFunc("/oauth/spotify/client-metadata.json", handlers.ServeOAuthMetadata).Methods("GET")
+	router.HandleFunc("/oauth/spotify/client-metadata.json", handlers.ServeSpotifyOAuthMetadata).Methods("GET", "OPTIONS")
 
 	s := router.PathPrefix("/api").Subrouter()
 	s.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -249,8 +249,8 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 		w.Write([]byte("OK"))
 	}).Methods("GET")
 
-	s.HandleFunc("/login/spotify", handlers.SpotifyLogin).Methods("POST")
-	s.HandleFunc("/refresh", handlers.RefreshSession).Methods("POST")
+	s.HandleFunc("/login/spotify", handlers.SpotifyLogin).Methods("POST", "OPTIONS")
+	s.HandleFunc("/refresh", handlers.RefreshSession).Methods("POST", "OPTIONS")
 
 	signup := s.PathPrefix("/complete-signup").Subrouter()
 	signup.Use(AuthorizeRequest)
@@ -265,7 +265,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	playlist := s.PathPrefix("/playlist").Subrouter()
 	playlist.Use(AuthorizeRequest)
 	playlist.Use(AuthorizeAdminRequest)
-	playlist.HandleFunc("/", handlers.CreateMonthlyPlaylist).Methods("POST")
+	playlist.HandleFunc("/", handlers.CreateMonthlyPlaylist).Methods("POST", "OPTIONS")
 
 	friendships := s.PathPrefix("/friendships").Subrouter()
 	friendships.Use(AuthorizeRequest)

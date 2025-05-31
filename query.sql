@@ -1,7 +1,8 @@
 -- name: CreateSpotifyUser :one
 INSERT INTO users (spotify_user_id, email, spotify_user_data)
 VALUES ($1, $2, $3)
-ON CONFLICT (spotify_user_id) DO NOTHING
+ON CONFLICT (spotify_user_id) DO UPDATE
+SET email = users.email -- no op
 RETURNING *;
 
 -- name: GetUserBySpotifyId :one

@@ -128,7 +128,8 @@ func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPl
 const createSpotifyUser = `-- name: CreateSpotifyUser :one
 INSERT INTO users (spotify_user_id, email, spotify_user_data)
 VALUES ($1, $2, $3)
-ON CONFLICT (spotify_user_id) DO NOTHING
+ON CONFLICT (spotify_user_id) DO UPDATE
+SET email = users.email -- no op
 RETURNING id, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
 `
 
@@ -476,7 +477,7 @@ func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipPara
 const signUpUser = `-- name: SignUpUser :one
 UPDATE users
 SET username = $1, registered_at = now()
-WHERE id = $2
+WHERE id = $2 AND registered_at IS NULL
 RETURNING id, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
 `
 

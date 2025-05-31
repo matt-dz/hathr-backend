@@ -139,7 +139,7 @@ func buildJWT(user database.User, spotifyData spotifyModels.User, key string) (s
 	}, []byte(key))
 }
 
-func ServeOAuthMetadata(w http.ResponseWriter, r *http.Request) {
+func ServeSpotifyOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
 	if !ok {
@@ -233,7 +233,7 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 		SpotifyUserData: marshaledUser,
 	})
 	if err != nil {
-		env.Logger.ErrorContext(ctx, "Unable to upsert user", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Unable to insert user", slog.Any("error", err))
 		http.Error(w, "Error inserting user into database", http.StatusInternalServerError)
 		return
 	}

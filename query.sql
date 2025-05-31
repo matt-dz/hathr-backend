@@ -96,7 +96,7 @@ WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
   AND f.status = 'accepted';
 
 -- name: ListOutgoingRequests :many
-SELECT u.*
+SELECT sqlc.embed(u), sqlc.embed(f)
 FROM friendships f
 JOIN users u
 ON (u.id = CASE
@@ -108,7 +108,7 @@ AND f.requester_id = $1
 AND f.status = 'pending';
 
 -- name: ListIncomingRequests :many
-SELECT u.*
+SELECT sqlc.embed(u), sqlc.embed(f)
 FROM friendships f
 JOIN users u
 ON (u.id = CASE

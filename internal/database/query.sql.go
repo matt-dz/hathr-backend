@@ -214,7 +214,7 @@ func (q *Queries) ListFriends(ctx context.Context, userAID uuid.UUID) ([]User, e
 }
 
 const listIncomingRequests = `-- name: ListIncomingRequests :many
-SELECT u.id, u.spotify_user_id, u.email, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+SELECT u.id, u.spotify_user_id, u.email, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM friendships f
 JOIN users u
 ON (u.id = CASE
@@ -226,23 +226,34 @@ AND f.requester_id <> $1
 AND f.status = 'pending'
 `
 
-func (q *Queries) ListIncomingRequests(ctx context.Context, userAID uuid.UUID) ([]User, error) {
+type ListIncomingRequestsRow struct {
+	User       User
+	Friendship Friendship
+}
+
+func (q *Queries) ListIncomingRequests(ctx context.Context, userAID uuid.UUID) ([]ListIncomingRequestsRow, error) {
 	rows, err := q.db.Query(ctx, listIncomingRequests, userAID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []User
+	var items []ListIncomingRequestsRow
 	for rows.Next() {
-		var i User
+		var i ListIncomingRequestsRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.SpotifyUserID,
-			&i.Email,
-			&i.SpotifyUserData,
-			&i.CreatedAt,
-			&i.RefreshToken,
-			&i.RefreshExpiresAt,
+			&i.User.ID,
+			&i.User.SpotifyUserID,
+			&i.User.Email,
+			&i.User.SpotifyUserData,
+			&i.User.CreatedAt,
+			&i.User.RefreshToken,
+			&i.User.RefreshExpiresAt,
+			&i.Friendship.UserAID,
+			&i.Friendship.UserBID,
+			&i.Friendship.RequesterID,
+			&i.Friendship.Status,
+			&i.Friendship.RequestedAt,
+			&i.Friendship.RespondedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -255,7 +266,7 @@ func (q *Queries) ListIncomingRequests(ctx context.Context, userAID uuid.UUID) (
 }
 
 const listOutgoingRequests = `-- name: ListOutgoingRequests :many
-SELECT u.id, u.spotify_user_id, u.email, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+SELECT u.id, u.spotify_user_id, u.email, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM friendships f
 JOIN users u
 ON (u.id = CASE
@@ -267,23 +278,34 @@ AND f.requester_id = $1
 AND f.status = 'pending'
 `
 
-func (q *Queries) ListOutgoingRequests(ctx context.Context, userAID uuid.UUID) ([]User, error) {
+type ListOutgoingRequestsRow struct {
+	User       User
+	Friendship Friendship
+}
+
+func (q *Queries) ListOutgoingRequests(ctx context.Context, userAID uuid.UUID) ([]ListOutgoingRequestsRow, error) {
 	rows, err := q.db.Query(ctx, listOutgoingRequests, userAID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []User
+	var items []ListOutgoingRequestsRow
 	for rows.Next() {
-		var i User
+		var i ListOutgoingRequestsRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.SpotifyUserID,
-			&i.Email,
-			&i.SpotifyUserData,
-			&i.CreatedAt,
-			&i.RefreshToken,
-			&i.RefreshExpiresAt,
+			&i.User.ID,
+			&i.User.SpotifyUserID,
+			&i.User.Email,
+			&i.User.SpotifyUserData,
+			&i.User.CreatedAt,
+			&i.User.RefreshToken,
+			&i.User.RefreshExpiresAt,
+			&i.Friendship.UserAID,
+			&i.Friendship.UserBID,
+			&i.Friendship.RequesterID,
+			&i.Friendship.Status,
+			&i.Friendship.RequestedAt,
+			&i.Friendship.RespondedAt,
 		); err != nil {
 			return nil, err
 		}

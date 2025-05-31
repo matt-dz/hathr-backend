@@ -62,3 +62,12 @@ type PublicUser struct {
 	CreatedAt       time.Time                `json:"created_at"`
 	SpotifyUserData spotifyModels.PublicUser `json:"spotify_user_data"`
 }
+
+type FriendRequest struct {
+	UserAID     uuid.UUID  `json:"user_a_id"`
+	UserBID     uuid.UUID  `json:"user_b_id"`
+	RequesterID uuid.UUID  `json:"requester_id"`
+	Status      string     `json:"status"`
+	RequestedAt time.Time  `json:"requested_at"`
+	FriendData  PublicUser `json:"friend_data"`
+}

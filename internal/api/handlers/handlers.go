@@ -3,6 +3,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"hathr-backend/internal/api/models"
@@ -30,6 +32,90 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/zmb3/spotify/v2"
 )
+
+func buildSpotifyPublicUser(spotifyUserData spotifyModels.User) spotifyModels.PublicUser {
+	return spotifyModels.PublicUser{
+		ID:           spotifyUserData.ID,
+		DisplayName:  spotifyUserData.DisplayName,
+		ExternalURLs: spotifyUserData.ExternalURLs,
+		Images:       spotifyUserData.Images,
+		URI:          spotifyUserData.URI,
+	}
+}
+
+func listOutgoingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UUID, w http.ResponseWriter) ([]models.FriendRequest, error) {
+
+	response := make([]models.FriendRequest, 0)
+
+	env.Logger.DebugContext(ctx, "Listing outgoing friend requests from DB")
+	friendRequests, err := env.Database.ListOutgoingRequests(ctx, userID)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to list friend requests", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return response, err
+	}
+
+	// Process requests data
+	env.Logger.DebugContext(ctx, "Processing friend requests data")
+	response = make([]models.FriendRequest, len(response))
+	for i, req := range friendRequests {
+		var spotifyUserData spotifyModels.User
+		err := json.Unmarshal(req.User.SpotifyUserData, &spotifyUserData)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify user data", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return response, err
+		}
+		response[i] = models.FriendRequest{
+			UserAID: req.Friendship.UserAID,
+			UserBID: req.Friendship.UserBID,
+			FriendData: models.PublicUser{
+				ID:              req.User.ID,
+				CreatedAt:       req.User.CreatedAt.Time,
+				SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
+			},
+		}
+	}
+
+	return response, nil
+}
+
+func listIncomingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UUID, w http.ResponseWriter) ([]models.FriendRequest, error) {
+
+	response := make([]models.FriendRequest, 0)
+
+	env.Logger.DebugContext(ctx, "Listing incoming friend requests from DB")
+	friendRequests, err := env.Database.ListOutgoingRequests(ctx, userID)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to list friend requests", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return response, err
+	}
+
+	// Process requests data
+	env.Logger.DebugContext(ctx, "Processing friend requests data")
+	response = make([]models.FriendRequest, len(response))
+	for i, req := range friendRequests {
+		var spotifyUserData spotifyModels.User
+		err := json.Unmarshal(req.User.SpotifyUserData, &spotifyUserData)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify user data", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return response, err
+		}
+		response[i] = models.FriendRequest{
+			UserAID: req.Friendship.UserAID,
+			UserBID: req.Friendship.UserBID,
+			FriendData: models.PublicUser{
+				ID:              req.User.ID,
+				CreatedAt:       req.User.CreatedAt.Time,
+				SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
+			},
+		}
+	}
+
+	return response, nil
+}
 
 func ServeOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -535,65 +621,6 @@ func UpdateVisibility(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func CreateFriendRequest(w http.ResponseWriter, r *http.Request)    {}
-func DeleteFriendRequest(w http.ResponseWriter, r *http.Request)    {}
-func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {}
-
-func RemoveFriend(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
-	if !ok {
-		env = hathrEnv.Null()
-	}
-
-	// Retrieve request parameters
-	env.Logger.DebugContext(ctx, "Retrieving request parameters")
-	jwt, ok := ctx.Value("jwt").(*jwt.Token)
-	if !ok {
-		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		http.Error(w, "JWT not found", http.StatusUnauthorized)
-		return
-	}
-	friendID := mux.Vars(r)["id"]
-	userID, err := jwt.Claims.GetSubject()
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
-		return
-	}
-
-	// Validate parameters
-	env.Logger.DebugContext(ctx, "Validating parameters")
-	if err := uuid.Validate(friendID); err != nil {
-		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
-		return
-	}
-	if err := uuid.Validate(userID); err != nil {
-		env.Logger.ErrorContext(ctx, "Invalid friend id", slog.Any("error", err))
-		http.Error(w, "Invalid ID in route parameter", http.StatusBadRequest)
-		return
-	}
-
-	rows, err := env.Database.RemoveFriendship(ctx, database.RemoveFriendshipParams{
-		UserAID: uuid.MustParse(userID),
-		UserBID: uuid.MustParse(friendID),
-	})
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to remove friendship", slog.Any("error", err))
-		http.Error(w, "Failed to remove friendship", http.StatusInternalServerError)
-		return
-	}
-	if rows == 0 {
-		env.Logger.ErrorContext(ctx, "No rows affected. Friendship not found.", slog.Any("error", err))
-		http.Error(w, "Friendship not found", http.StatusNotFound)
-		return
-	}
-
-	env.Logger.DebugContext(ctx, "Successfully removed friendship")
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func ListFriends(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
@@ -668,4 +695,123 @@ func ListFriends(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
-func ListRequests(w http.ResponseWriter, r *http.Request) {}
+
+func RemoveFriend(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	friendID := mux.Vars(r)["id"]
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if err := uuid.Validate(friendID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid friend id", slog.Any("error", err))
+		http.Error(w, "Invalid ID in route parameter", http.StatusBadRequest)
+		return
+	}
+
+	rows, err := env.Database.RemoveFriendship(ctx, database.RemoveFriendshipParams{
+		UserAID: uuid.MustParse(userID),
+		UserBID: uuid.MustParse(friendID),
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to remove friendship", slog.Any("error", err))
+		http.Error(w, "Failed to remove friendship", http.StatusInternalServerError)
+		return
+	}
+	if rows == 0 {
+		env.Logger.ErrorContext(ctx, "No rows affected. Friendship not found.", slog.Any("error", err))
+		http.Error(w, "Friendship not found", http.StatusNotFound)
+		return
+	}
+
+	env.Logger.DebugContext(ctx, "Successfully removed friendship")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func ListRequests(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	requestType := strings.ToLower(r.URL.Query().Get("direction"))
+
+	if requestType != "incoming" && requestType != "outgoing" {
+		env.Logger.ErrorContext(ctx, "Invalid direction", slog.String("direction", requestType))
+		http.Error(w, "direction must be 'incoming' or 'outgoing'", http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// List friend requests
+	var friendRequests []models.FriendRequest
+	if requestType == "outgoing" {
+		friendRequests, err = listIncomingRequests(env, ctx, uuid.MustParse(userID), w)
+	} else {
+		friendRequests, err = listOutgoingRequests(env, ctx, uuid.MustParse(userID), w)
+	}
+	if err != nil {
+		return
+	}
+
+	// Encode response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(responses.ListFriendRequests{
+		Requests: friendRequests,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode friend requests response", slog.Any("error", err))
+		http.Error(w, "Failed to encode friend requests response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func CreateFriendRequest(w http.ResponseWriter, r *http.Request)    {}
+func DeleteFriendRequest(w http.ResponseWriter, r *http.Request)    {}
+func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {}

@@ -52,3 +52,7 @@ type GetPlaylist struct {
 type ListFriends struct {
 	Friends []models.PublicUser `json:"friends"`
 }
+
+type ListFriendRequests struct {
+	Requests []models.FriendRequest `json:"requests"`
+}

@@ -952,7 +952,7 @@ func CancelFriendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	if rows == 0 {
 		env.Logger.ErrorContext(ctx, "No rows affected. Friend request not found.", slog.Any("error", err))
-		http.Error(w, "Friend request not found", http.StatusNotFound)
+		http.Error(w, "Outgoing friend request not found", http.StatusNotFound)
 		return
 	}
 

@@ -538,7 +538,62 @@ func UpdateVisibility(w http.ResponseWriter, r *http.Request) {
 func CreateFriendRequest(w http.ResponseWriter, r *http.Request)    {}
 func DeleteFriendRequest(w http.ResponseWriter, r *http.Request)    {}
 func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {}
-func RemoveFriend(w http.ResponseWriter, r *http.Request)           {}
+
+func RemoveFriend(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	friendID := mux.Vars(r)["id"]
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if err := uuid.Validate(friendID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid friend id", slog.Any("error", err))
+		http.Error(w, "Invalid ID in route parameter", http.StatusBadRequest)
+		return
+	}
+
+	rows, err := env.Database.RemoveFriendship(ctx, database.RemoveFriendshipParams{
+		UserAID: uuid.MustParse(userID),
+		UserBID: uuid.MustParse(friendID),
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to remove friendship", slog.Any("error", err))
+		http.Error(w, "Failed to remove friendship", http.StatusInternalServerError)
+		return
+	}
+	if rows == 0 {
+		env.Logger.ErrorContext(ctx, "No rows affected. Friendship not found.", slog.Any("error", err))
+		http.Error(w, "Friendship not found", http.StatusNotFound)
+		return
+	}
+
+	env.Logger.DebugContext(ctx, "Successfully removed friendship")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func ListFriends(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()

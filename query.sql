@@ -82,7 +82,7 @@ UPDATE friendships
 
 -- name: RemoveFriendship :execrows
 DELETE FROM friendships
-    WHERE user_a_id = LEAST($1, $2) AND user_b_id = GREATEST($1, $2);
+    WHERE user_a_id = LEAST(@user_a_id::uuid, @user_b_id::uuid) AND user_b_id = GREATEST(@user_a_id::uuid, @user_b_id::uuid);
 
 -- name: ListFriends :many
 SELECT u.*

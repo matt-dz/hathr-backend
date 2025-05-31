@@ -320,16 +320,16 @@ func (q *Queries) RejectFriendRequest(ctx context.Context, arg RejectFriendReque
 
 const removeFriendship = `-- name: RemoveFriendship :execrows
 DELETE FROM friendships
-    WHERE user_a_id = LEAST($1, $2) AND user_b_id = GREATEST($1, $2)
+    WHERE user_a_id = LEAST($1::uuid, $2::uuid) AND user_b_id = GREATEST($1::uuid, $2::uuid)
 `
 
 type RemoveFriendshipParams struct {
-	UserAID   uuid.UUID
-	UserAID_2 uuid.UUID
+	UserAID uuid.UUID
+	UserBID uuid.UUID
 }
 
 func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipParams) (int64, error) {
-	result, err := q.db.Exec(ctx, removeFriendship, arg.UserAID, arg.UserAID_2)
+	result, err := q.db.Exec(ctx, removeFriendship, arg.UserAID, arg.UserBID)
 	if err != nil {
 		return 0, err
 	}

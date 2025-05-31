@@ -134,8 +134,11 @@ type SpotifyToken struct {
 
 type User struct {
 	ID               uuid.UUID
-	SpotifyUserID    string
+	Username         pgtype.Text
 	Email            string
+	RegisteredAt     pgtype.Timestamp
+	Admin            pgtype.Bool
+	SpotifyUserID    string
 	SpotifyUserData  []byte
 	CreatedAt        pgtype.Timestamp
 	RefreshToken     uuid.UUID

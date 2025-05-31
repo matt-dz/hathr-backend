@@ -249,7 +249,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 		w.Write([]byte("OK"))
 	}).Methods("GET")
 
-	s.HandleFunc("/login", handlers.Login).Methods("POST")
+	s.HandleFunc("/login/spotify", handlers.SpotifyLogin).Methods("POST")
 	s.HandleFunc("/refresh", handlers.RefreshSession).Methods("POST")
 
 	playlists := s.PathPrefix("/me/playlists").Subrouter()

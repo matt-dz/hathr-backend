@@ -1,7 +1,11 @@
 CREATE TABLE users (
     id UUID DEFAULT gen_random_uuid (),
-    spotify_user_id TEXT NOT NULL UNIQUE,
+    username TEXT UNIQUE,
     email TEXT NOT NULL,
+    registered_at TIMESTAMP,
+    admin BOOLEAN DEFAULT FALSE,
+
+    spotify_user_id TEXT NOT NULL UNIQUE,
     spotify_user_data JSONB NOT NULL,
 
     created_at TIMESTAMP NOT NULL DEFAULT now (),

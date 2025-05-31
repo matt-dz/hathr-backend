@@ -124,6 +124,20 @@ func listIncomingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UU
 	return response, nil
 }
 
+func buildJWT(user database.User, spotifyData spotifyModels.User, key string) (string, error) {
+	return hathrJWT.CreateJWT(hathrJWT.JWTParams{
+		UserID:     user.ID.String(),
+		Admin:      user.Admin.Bool,
+		Registered: !user.RegisteredAt.Time.IsZero(),
+		SpotifyData: hathrJWT.SpotifyClaims{
+			DisplayName: spotifyData.DisplayName,
+			Email:       spotifyData.Email,
+			Images:      spotifyData.Images,
+			ID:          spotifyData.ID,
+		},
+	}, []byte(key))
+}
+
 func ServeOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
@@ -140,7 +154,7 @@ func ServeOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func Login(w http.ResponseWriter, r *http.Request) {
+func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
@@ -210,8 +224,9 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to marshal user data", http.StatusInternalServerError)
 		return
 	}
-	env.Logger.DebugContext(ctx, "Upserting user")
-	dbUser, err := env.Database.UpsertUser(ctx, database.UpsertUserParams{
+
+	env.Logger.DebugContext(ctx, "Inserting user into database")
+	dbUser, err := env.Database.CreateSpotifyUser(ctx, database.CreateSpotifyUserParams{
 		SpotifyUserID:   spotifyUser.ID,
 		Email:           spotifyUser.Email,
 		SpotifyUserData: marshaledUser,
@@ -252,16 +267,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT for user
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	signedJWT, err := hathrJWT.CreateJWT(hathrJWT.JWTParams{
-		UserID: dbUser.ID.String(),
-		Admin:  false,
-		SpotifyData: hathrJWT.SpotifyClaims{
-			DisplayName: spotifyUser.DisplayName,
-			Email:       spotifyUser.Email,
-			Images:      spotifyUser.Images,
-			ID:          spotifyUser.ID,
-		},
-	}, []byte(key.Value))
+	signedJWT, err := buildJWT(dbUser, spotifyUser, key.Value)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, "Unable to create JWT", http.StatusInternalServerError)
@@ -351,16 +357,7 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	accessToken, err := hathrJWT.CreateJWT(hathrJWT.JWTParams{
-		UserID: user.ID.String(),
-		Admin:  false,
-		SpotifyData: hathrJWT.SpotifyClaims{
-			DisplayName: spotifyUserData.DisplayName,
-			Email:       spotifyUserData.Email,
-			Images:      spotifyUserData.Images,
-			ID:          spotifyUserData.ID,
-		},
-	}, []byte(key.Value))
+	accessToken, err := buildJWT(user, spotifyUserData, key.Value)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, "Unable to create JWT", http.StatusInternalServerError)

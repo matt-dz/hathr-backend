@@ -1,3 +1,12 @@
+-- name: CreateSpotifyUser :one
+INSERT INTO users (spotify_user_id, email, spotify_user_data)
+VALUES ($1, $2, $3)
+ON CONFLICT (spotify_user_id) DO NOTHING
+RETURNING *;
+
+-- name: GetUserBySpotifyId :one
+SELECT * FROM users WHERE spotify_user_id = $1;
+
 -- name: UpsertUser :one
 INSERT INTO users (spotify_user_id, email, spotify_user_data)
 VALUES ($1, $2, $3)

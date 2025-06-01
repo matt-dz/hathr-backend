@@ -56,3 +56,7 @@ type ListFriends struct {
 type ListFriendRequests struct {
 	Requests []models.FriendRequest `json:"requests"`
 }
+
+type SearchUsers struct {
+	Users []models.PublicUser `json:"users"`
+}

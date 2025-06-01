@@ -474,6 +474,60 @@ func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipPara
 	return result.RowsAffected(), nil
 }
 
+const searchUsers = `-- name: SearchUsers :many
+SELECT id, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at, similarity(username, $1::text) AS sim_score
+FROM users
+WHERE similarity(username, $1::text) > 0.2
+ORDER BY sim_score DESC
+LIMIT 10
+`
+
+type SearchUsersRow struct {
+	ID               uuid.UUID
+	Username         pgtype.Text
+	Email            string
+	RegisteredAt     pgtype.Timestamp
+	Role             Role
+	SpotifyUserID    string
+	SpotifyUserData  []byte
+	CreatedAt        pgtype.Timestamp
+	RefreshToken     uuid.UUID
+	RefreshExpiresAt pgtype.Timestamp
+	SimScore         float32
+}
+
+func (q *Queries) SearchUsers(ctx context.Context, username string) ([]SearchUsersRow, error) {
+	rows, err := q.db.Query(ctx, searchUsers, username)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchUsersRow
+	for rows.Next() {
+		var i SearchUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Email,
+			&i.RegisteredAt,
+			&i.Role,
+			&i.SpotifyUserID,
+			&i.SpotifyUserData,
+			&i.CreatedAt,
+			&i.RefreshToken,
+			&i.RefreshExpiresAt,
+			&i.SimScore,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const signUpUser = `-- name: SignUpUser :one
 UPDATE users
 SET username = $1, registered_at = now()
@@ -564,32 +618,4 @@ func (q *Queries) UpsertSpotifyCredentials(ctx context.Context, arg UpsertSpotif
 		arg.RefreshToken,
 	)
 	return err
-}
-
-const upsertUser = `-- name: UpsertUser :one
-INSERT INTO users (spotify_user_id, email, spotify_user_data)
-VALUES ($1, $2, $3)
-ON CONFLICT (spotify_user_id)
-  DO UPDATE SET
-    email  = EXCLUDED.email,
-    spotify_user_data = EXCLUDED.spotify_user_data
-RETURNING id, refresh_token
-`
-
-type UpsertUserParams struct {
-	SpotifyUserID   string
-	Email           string
-	SpotifyUserData []byte
-}
-
-type UpsertUserRow struct {
-	ID           uuid.UUID
-	RefreshToken uuid.UUID
-}
-
-func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (UpsertUserRow, error) {
-	row := q.db.QueryRow(ctx, upsertUser, arg.SpotifyUserID, arg.Email, arg.SpotifyUserData)
-	var i UpsertUserRow
-	err := row.Scan(&i.ID, &i.RefreshToken)
-	return i, err
 }

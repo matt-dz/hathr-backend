@@ -59,6 +59,7 @@ type MonthlyPlaylist struct {
 
 type PublicUser struct {
 	ID              uuid.UUID                `json:"id"`
+	Username        string                   `json:"username"`
 	CreatedAt       time.Time                `json:"created_at"`
 	SpotifyUserData spotifyModels.PublicUser `json:"spotify_user_data"`
 }

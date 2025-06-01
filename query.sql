@@ -14,14 +14,12 @@ SET username = $1, registered_at = now()
 WHERE id = $2 AND registered_at IS NULL
 RETURNING *;
 
--- name: UpsertUser :one
-INSERT INTO users (spotify_user_id, email, spotify_user_data)
-VALUES ($1, $2, $3)
-ON CONFLICT (spotify_user_id)
-  DO UPDATE SET
-    email  = EXCLUDED.email,
-    spotify_user_data = EXCLUDED.spotify_user_data
-RETURNING id, refresh_token;
+-- name: SearchUsers :many
+SELECT *, similarity(username, @username::text) AS sim_score
+FROM users
+WHERE similarity(username, @username::text) > 0.2
+ORDER BY sim_score DESC
+LIMIT 10;
 
 -- name: CreateMonthlyPlaylist :one
 INSERT INTO monthly_playlists(user_id, tracks, year, month, name)

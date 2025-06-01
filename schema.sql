@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TYPE role AS ENUM(
     'user',
     'admin'
@@ -19,6 +21,10 @@ CREATE TABLE users (
 
     PRIMARY KEY (id)
 );
+
+CREATE INDEX users_username_trgm_gin
+    ON users
+    USING GIN (username gin_trgm_ops);
 
 CREATE TYPE friendship_status AS ENUM(
     'pending',

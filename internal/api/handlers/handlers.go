@@ -47,6 +47,20 @@ func buildSpotifyPublicUser(spotifyUserData spotifyModels.User) spotifyModels.Pu
 	}
 }
 
+func buildPublicUser(user database.User) (models.PublicUser, error) {
+	var spotifyUserData spotifyModels.User
+	err := json.Unmarshal(user.SpotifyUserData, &spotifyUserData)
+	if err != nil {
+		return models.PublicUser{}, err
+	}
+
+	return models.PublicUser{
+		ID:              user.ID,
+		CreatedAt:       user.CreatedAt.Time,
+		SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
+	}, nil
+}
+
 func listOutgoingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UUID, w http.ResponseWriter) ([]models.FriendRequest, error) {
 
 	response := make([]models.FriendRequest, 0)
@@ -1163,4 +1177,63 @@ func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	env.Logger.DebugContext(ctx, "Successfully responded to friend request")
+}
+
+func Search(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	query := r.URL.Query().Get("username")
+	if query == "" {
+		env.Logger.ErrorContext(ctx, "Missing query parameter 'username'")
+		http.Error(w, "Query parameter 'username' is required", http.StatusBadRequest)
+		return
+	}
+
+	// Search for users
+	env.Logger.DebugContext(ctx, "Searching for users in DB")
+	dbUsers, err := env.Database.SearchUsers(ctx, query)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to search users", slog.Any("error", err))
+		http.Error(w, "Failed to search users", http.StatusInternalServerError)
+		return
+	}
+
+	users := make([]models.PublicUser, len(dbUsers))
+	for i, dbUser := range dbUsers {
+		// Unmarshal spotify data
+		var spotifyUserData spotifyModels.User
+		err = json.Unmarshal(dbUser.SpotifyUserData, &spotifyUserData)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify data", slog.Any("error", err))
+			http.Error(w, "Unable to unmarshal user data", http.StatusInternalServerError)
+			return
+		}
+
+		users[i] = models.PublicUser{
+			ID:       dbUser.ID,
+			Username: dbUser.Username.String,
+			SpotifyUserData: spotifyModels.PublicUser{
+				DisplayName: spotifyUserData.DisplayName,
+				Images:      spotifyUserData.Images,
+			},
+		}
+	}
+
+	// Encode response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(responses.SearchUsers{
+		Users: users,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode search response", slog.Any("error", err))
+		http.Error(w, "Failed to encode search response", http.StatusInternalServerError)
+		return
+	}
 }

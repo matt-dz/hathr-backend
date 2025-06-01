@@ -47,18 +47,14 @@ func buildSpotifyPublicUser(spotifyUserData spotifyModels.User) spotifyModels.Pu
 	}
 }
 
-func buildPublicUser(user database.User) (models.PublicUser, error) {
-	var spotifyUserData spotifyModels.User
-	err := json.Unmarshal(user.SpotifyUserData, &spotifyUserData)
-	if err != nil {
-		return models.PublicUser{}, err
-	}
-
+func buildPublicUser(user database.User, spotifyUserData spotifyModels.User) models.PublicUser {
 	return models.PublicUser{
 		ID:              user.ID,
 		CreatedAt:       user.CreatedAt.Time,
+		Username:        user.Username.String,
+		DisplayName:     user.DisplayName.String,
 		SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
-	}, nil
+	}
 }
 
 func listOutgoingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UUID, w http.ResponseWriter) ([]models.FriendRequest, error) {
@@ -84,17 +80,14 @@ func listOutgoingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UU
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return response, err
 		}
+
 		response[i] = models.FriendRequest{
 			UserAID:     req.Friendship.UserAID,
 			UserBID:     req.Friendship.UserBID,
 			RequesterID: req.Friendship.RequesterID,
 			Status:      string(req.Friendship.Status),
 			RequestedAt: req.Friendship.RequestedAt.Time,
-			FriendData: models.PublicUser{
-				ID:              req.User.ID,
-				CreatedAt:       req.User.CreatedAt.Time,
-				SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
-			},
+			FriendData:  buildPublicUser(req.User, spotifyUserData),
 		}
 	}
 
@@ -130,11 +123,7 @@ func listIncomingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UU
 			RequesterID: req.Friendship.RequesterID,
 			Status:      string(req.Friendship.Status),
 			RequestedAt: req.Friendship.RequestedAt.Time,
-			FriendData: models.PublicUser{
-				ID:              req.User.ID,
-				CreatedAt:       req.User.CreatedAt.Time,
-				SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
-			},
+			FriendData:  buildPublicUser(req.User, spotifyUserData),
 		}
 	}
 
@@ -822,17 +811,7 @@ func ListFriends(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		responseFriends[i] = models.PublicUser{
-			ID:        f.ID,
-			CreatedAt: f.CreatedAt.Time,
-			SpotifyUserData: spotifyModels.PublicUser{
-				DisplayName:  spotifyUserData.DisplayName,
-				ExternalURLs: spotifyUserData.ExternalURLs,
-				ID:           spotifyUserData.ID,
-				Images:       spotifyUserData.Images,
-				URI:          spotifyUserData.URI,
-			},
-		}
+		responseFriends[i] = buildPublicUser(f, spotifyUserData)
 	}
 
 	// Encode response
@@ -1244,8 +1223,9 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		}
 
 		users[i] = models.PublicUser{
-			ID:       dbUser.ID,
-			Username: dbUser.Username.String,
+			ID:          dbUser.ID,
+			Username:    dbUser.Username.String,
+			DisplayName: dbUser.DisplayName.String,
 			SpotifyUserData: spotifyModels.PublicUser{
 				DisplayName: spotifyUserData.DisplayName,
 				Images:      spotifyUserData.Images,

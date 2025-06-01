@@ -7,6 +7,7 @@ CREATE TYPE role AS ENUM(
 
 CREATE TABLE users (
     id UUID DEFAULT gen_random_uuid (),
+    display_name TEXT,
     username TEXT UNIQUE,
     email TEXT NOT NULL,
     registered_at TIMESTAMP,

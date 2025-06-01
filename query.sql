@@ -10,8 +10,8 @@ SELECT * FROM users WHERE spotify_user_id = $1;
 
 -- name: SignUpUser :one
 UPDATE users
-SET username = $1, registered_at = now()
-WHERE id = $2 AND registered_at IS NULL
+SET username = $1, display_name = $2, registered_at = now()
+WHERE id = $3
 RETURNING *;
 
 -- name: SearchUsers :many

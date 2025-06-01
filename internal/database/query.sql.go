@@ -130,7 +130,7 @@ INSERT INTO users (spotify_user_id, email, spotify_user_data)
 VALUES ($1, $2, $3)
 ON CONFLICT (spotify_user_id) DO UPDATE
 SET email = users.email -- no op
-RETURNING id, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
+RETURNING id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
 `
 
 type CreateSpotifyUserParams struct {
@@ -144,6 +144,7 @@ func (q *Queries) CreateSpotifyUser(ctx context.Context, arg CreateSpotifyUserPa
 	var i User
 	err := row.Scan(
 		&i.ID,
+		&i.DisplayName,
 		&i.Username,
 		&i.Email,
 		&i.RegisteredAt,
@@ -202,7 +203,7 @@ func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) 
 }
 
 const getUserBySpotifyId = `-- name: GetUserBySpotifyId :one
-SELECT id, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE spotify_user_id = $1
+SELECT id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE spotify_user_id = $1
 `
 
 func (q *Queries) GetUserBySpotifyId(ctx context.Context, spotifyUserID string) (User, error) {
@@ -210,6 +211,7 @@ func (q *Queries) GetUserBySpotifyId(ctx context.Context, spotifyUserID string) 
 	var i User
 	err := row.Scan(
 		&i.ID,
+		&i.DisplayName,
 		&i.Username,
 		&i.Email,
 		&i.RegisteredAt,
@@ -224,7 +226,7 @@ func (q *Queries) GetUserBySpotifyId(ctx context.Context, spotifyUserID string) 
 }
 
 const getUserFromSession = `-- name: GetUserFromSession :one
-SELECT id, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE refresh_token = $1
+SELECT id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE refresh_token = $1
 `
 
 func (q *Queries) GetUserFromSession(ctx context.Context, refreshToken uuid.UUID) (User, error) {
@@ -232,6 +234,7 @@ func (q *Queries) GetUserFromSession(ctx context.Context, refreshToken uuid.UUID
 	var i User
 	err := row.Scan(
 		&i.ID,
+		&i.DisplayName,
 		&i.Username,
 		&i.Email,
 		&i.RegisteredAt,
@@ -279,7 +282,7 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, userID uuid.UUID) ([]Mon
 }
 
 const listFriends = `-- name: ListFriends :many
-SELECT u.id, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+SELECT u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM friendships f
 JOIN users u
   ON (u.id = CASE
@@ -301,6 +304,7 @@ func (q *Queries) ListFriends(ctx context.Context, userAID uuid.UUID) ([]User, e
 		var i User
 		if err := rows.Scan(
 			&i.ID,
+			&i.DisplayName,
 			&i.Username,
 			&i.Email,
 			&i.RegisteredAt,
@@ -322,7 +326,7 @@ func (q *Queries) ListFriends(ctx context.Context, userAID uuid.UUID) ([]User, e
 }
 
 const listIncomingRequests = `-- name: ListIncomingRequests :many
-SELECT u.id, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
+SELECT u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM friendships f
 JOIN users u
 ON (u.id = CASE
@@ -350,6 +354,7 @@ func (q *Queries) ListIncomingRequests(ctx context.Context, userAID uuid.UUID) (
 		var i ListIncomingRequestsRow
 		if err := rows.Scan(
 			&i.User.ID,
+			&i.User.DisplayName,
 			&i.User.Username,
 			&i.User.Email,
 			&i.User.RegisteredAt,
@@ -377,7 +382,7 @@ func (q *Queries) ListIncomingRequests(ctx context.Context, userAID uuid.UUID) (
 }
 
 const listOutgoingRequests = `-- name: ListOutgoingRequests :many
-SELECT u.id, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
+SELECT u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM friendships f
 JOIN users u
 ON (u.id = CASE
@@ -405,6 +410,7 @@ func (q *Queries) ListOutgoingRequests(ctx context.Context, userAID uuid.UUID) (
 		var i ListOutgoingRequestsRow
 		if err := rows.Scan(
 			&i.User.ID,
+			&i.User.DisplayName,
 			&i.User.Username,
 			&i.User.Email,
 			&i.User.RegisteredAt,
@@ -475,7 +481,7 @@ func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipPara
 }
 
 const searchUsers = `-- name: SearchUsers :many
-SELECT id, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at, similarity(username, $1::text) AS sim_score
+SELECT id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at, similarity(username, $1::text) AS sim_score
 FROM users
 WHERE similarity(username, $1::text) > 0.2 AND $2 <> id
 ORDER BY sim_score DESC
@@ -489,6 +495,7 @@ type SearchUsersParams struct {
 
 type SearchUsersRow struct {
 	ID               uuid.UUID
+	DisplayName      pgtype.Text
 	Username         pgtype.Text
 	Email            string
 	RegisteredAt     pgtype.Timestamp
@@ -512,6 +519,7 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Sea
 		var i SearchUsersRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.DisplayName,
 			&i.Username,
 			&i.Email,
 			&i.RegisteredAt,
@@ -535,21 +543,23 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Sea
 
 const signUpUser = `-- name: SignUpUser :one
 UPDATE users
-SET username = $1, registered_at = now()
-WHERE id = $2 AND registered_at IS NULL
-RETURNING id, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
+SET username = $1, display_name = $2, registered_at = now()
+WHERE id = $3
+RETURNING id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
 `
 
 type SignUpUserParams struct {
-	Username pgtype.Text
-	ID       uuid.UUID
+	Username    pgtype.Text
+	DisplayName pgtype.Text
+	ID          uuid.UUID
 }
 
 func (q *Queries) SignUpUser(ctx context.Context, arg SignUpUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, signUpUser, arg.Username, arg.ID)
+	row := q.db.QueryRow(ctx, signUpUser, arg.Username, arg.DisplayName, arg.ID)
 	var i User
 	err := row.Scan(
 		&i.ID,
+		&i.DisplayName,
 		&i.Username,
 		&i.Email,
 		&i.RegisteredAt,

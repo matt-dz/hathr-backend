@@ -143,10 +143,11 @@ func listIncomingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UU
 
 func buildJWT(user database.User, spotifyData spotifyModels.User, key string) (string, error) {
 	return hathrJWT.CreateJWT(hathrJWT.JWTParams{
-		UserID:     user.ID.String(),
-		Role:       string(user.Role),
-		Registered: !user.RegisteredAt.Time.IsZero(),
-		Username:   user.Username.String,
+		UserID:      user.ID.String(),
+		Role:        string(user.Role),
+		Registered:  !user.RegisteredAt.Time.IsZero(),
+		Username:    user.Username.String,
+		DisplayName: user.DisplayName.String,
 		SpotifyData: hathrJWT.SpotifyClaims{
 			DisplayName: spotifyData.DisplayName,
 			Email:       spotifyData.Email,
@@ -366,11 +367,15 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sign up user
+	// Update username in the database
 	var pgErr *pgconn.PgError
 	env.Logger.DebugContext(ctx, "Updating user in database")
 	dbUser, err := env.Database.SignUpUser(ctx, database.SignUpUserParams{
 		Username: pgtype.Text{
+			String: signupRequest.Username,
+			Valid:  true,
+		},
+		DisplayName: pgtype.Text{
 			String: signupRequest.Username,
 			Valid:  true,
 		},

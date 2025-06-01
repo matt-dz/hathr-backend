@@ -176,6 +176,7 @@ type SpotifyToken struct {
 
 type User struct {
 	ID               uuid.UUID
+	DisplayName      pgtype.Text
 	Username         pgtype.Text
 	Email            string
 	RegisteredAt     pgtype.Timestamp

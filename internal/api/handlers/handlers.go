@@ -33,7 +33,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/zmb3/spotify/v2"
 )
 
 const usernameRegex = `^[a-zA-Z0-9_.]{1,20}$`
@@ -190,20 +189,21 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Login user
+	var spotifyErr *spotifyErrors.SpotifyError
 	env.Logger.DebugContext(ctx, "Logging in user")
-	loginRes, loginErr, err := hathrSpotify.LoginUser(loginRequest, env, ctx)
+	loginRes, err := hathrSpotify.LoginUser(loginRequest, env, ctx)
 	if err != nil {
 		http.Error(w, "Unable to login", http.StatusInternalServerError)
 		return
-	} else if loginErr != (spotifyErrors.LoginError{}) {
-		http.Error(w, loginErr.Status, loginErr.StatusCode)
+	} else if errors.As(err, &spotifyErr) {
+		http.Error(w, spotifyErr.Message, spotifyErr.StatusCode)
 		return
 	}
 	env.Logger.DebugContext(ctx, "Successfully logged in")
 
 	// Retrieve spotify user
 	env.Logger.DebugContext(ctx, "Retrieving user profile")
-	spotifyUser, spotifyErr, err := hathrSpotify.GetUserProfile(fmt.Sprintf("Bearer %s", loginRes.AccessToken), env, ctx)
+	spotifyUser, err := hathrSpotify.GetUserProfile(fmt.Sprintf("Bearer %s", loginRes.AccessToken), env, ctx)
 	if _, ok := err.(*url.Error); ok {
 		http.Error(w, "Failed to make validation request. Try again.", http.StatusInternalServerError)
 		return
@@ -211,9 +211,9 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 		env.Logger.ErrorContext(ctx, "Failed to decode response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
-	} else if (spotifyErr != spotify.Error{}) {
+	} else if errors.As(err, &spotifyErr) {
 		env.Logger.ErrorContext(ctx, "Received spotify error", slog.Any("error", spotifyErr))
-		http.Error(w, spotifyErr.Message, spotifyErr.Status)
+		http.Error(w, spotifyErr.Message, spotifyErr.StatusCode)
 		return
 	} else if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed request", slog.Any("error", err))

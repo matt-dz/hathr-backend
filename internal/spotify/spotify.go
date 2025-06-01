@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -20,25 +21,26 @@ import (
 	spotifyModels "hathr-backend/internal/spotify/models"
 
 	"github.com/hashicorp/go-retryablehttp"
-	"github.com/zmb3/spotify/v2"
 )
 
 const spotifyBaseURL = "https://api.spotify.com/v1/"
 const spotifyAuthURL = "https://accounts.spotify.com/"
 
-func LoginUser(login spotifyModels.LoginRequest, env *hathrEnv.Env, ctx context.Context) (spotifyModels.LoginResponse, spotifyErrors.LoginError, error) {
+func LoginUser(login spotifyModels.LoginRequest, env *hathrEnv.Env, ctx context.Context) (spotifyModels.LoginResponse, error) {
+
+	var loginResponse spotifyModels.LoginResponse
 
 	// Retrieve environment variables
 	redirectURI := os.Getenv("SPOTIFY_REDIRECT_URI")
 	if redirectURI == "" {
 		env.Logger.ErrorContext(ctx, "SPOTIFY_REDIRECT_URI not set")
-		return spotifyModels.LoginResponse{}, spotifyErrors.LoginError{}, fmt.Errorf("SPOTIFY_REDIRECT_URI not set")
+		return loginResponse, fmt.Errorf("SPOTIFY_REDIRECT_URI not set")
 	}
 
 	clientID := os.Getenv("SPOTIFY_CLIENT_ID")
 	if clientID == "" {
 		env.Logger.ErrorContext(ctx, "SPOTIFY_CLIENT_ID not set")
-		return spotifyModels.LoginResponse{}, spotifyErrors.LoginError{}, fmt.Errorf("SPOTIFY_CLIENT_ID not set")
+		return loginResponse, fmt.Errorf("SPOTIFY_CLIENT_ID not set")
 	}
 
 	// Create request
@@ -52,7 +54,7 @@ func LoginUser(login spotifyModels.LoginRequest, env *hathrEnv.Env, ctx context.
 	req, err := retryablehttp.NewRequest(http.MethodPost, spotifyAuthURL+"api/token", strings.NewReader(data.Encode()))
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error creating request", slog.Any("error", err))
-		return spotifyModels.LoginResponse{}, spotifyErrors.LoginError{}, err
+		return loginResponse, err
 	}
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
@@ -64,39 +66,45 @@ func LoginUser(login spotifyModels.LoginRequest, env *hathrEnv.Env, ctx context.
 	res, err := client.Do(req)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to send request", slog.Any("error", err))
-		return spotifyModels.LoginResponse{}, spotifyErrors.LoginError{}, err
+		return loginResponse, err
 	}
 
 	// If unsuccessful, return error
 	if res.StatusCode != http.StatusOK {
 		env.Logger.ErrorContext(ctx, "Unsuccessful request", slog.Any("res", res))
-		return spotifyModels.LoginResponse{}, spotifyErrors.LoginError{StatusCode: res.StatusCode, Status: res.Status}, nil
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to read body", slog.Any("error", err))
+		}
+		env.Logger.ErrorContext(ctx, "decoded body", slog.String("status", res.Status), slog.String("body", string(body)))
+		return loginResponse, &spotifyErrors.SpotifyError{StatusCode: res.StatusCode, Status: res.Status, Message: string(body)}
 	}
 
 	// Decode response
 	env.Logger.DebugContext(ctx, "Decoding spotify validation response")
-	var loginResponse spotifyModels.LoginResponse
 	decoder := json.NewDecoder(res.Body)
 	decoder.DisallowUnknownFields()
 	defer res.Body.Close()
 	err = hathrJson.DecodeJson(&loginResponse, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error decoding response", slog.Any("error", err))
-		return spotifyModels.LoginResponse{}, spotifyErrors.LoginError{}, err
+		return loginResponse, err
 	}
 
-	return loginResponse, spotifyErrors.LoginError{}, nil
+	return loginResponse, nil
 }
 
 // Get a user's profile via their access token
-func GetUserProfile(bearerToken string, env *hathrEnv.Env, ctx context.Context) (spotifyModels.User, spotify.Error, error) {
+func GetUserProfile(bearerToken string, env *hathrEnv.Env, ctx context.Context) (spotifyModels.User, error) {
+
+	var user spotifyModels.User
 
 	// Create request
 	env.Logger.DebugContext(ctx, "Creating request")
 	req, err := retryablehttp.NewRequest(http.MethodGet, spotifyBaseURL+"me", nil)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error creating request", slog.Any("error", err))
-		return spotifyModels.User{}, spotify.Error{}, err
+		return user, err
 	}
 	req.Header.Set("Authorization", bearerToken)
 
@@ -108,35 +116,38 @@ func GetUserProfile(bearerToken string, env *hathrEnv.Env, ctx context.Context) 
 	res, err := client.Do(req)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to send request", slog.Any("error", err))
-		return spotifyModels.User{}, spotify.Error{}, err
+		return user, err
 	}
 
 	// If official error, decode
 	// https://developer.spotify.com/documentation/web-api/reference/get-current-users-profile
 	if slices.Contains([]int{401, 403, 429}, res.StatusCode) {
 		env.Logger.ErrorContext(ctx, "Unsuccessful request", slog.Any("res", res))
-		var spotifyErr spotify.Error
-		decoder := json.NewDecoder(res.Body)
-		decoder.DisallowUnknownFields()
-		defer res.Body.Close()
-		err = hathrJson.DecodeJson(&spotifyErr, decoder)
-		return spotifyModels.User{}, spotifyErr, err
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to read body", slog.Any("error", err))
+		}
+		env.Logger.ErrorContext(ctx, "decoded body", slog.String("status", res.Status), slog.String("body", string(body)))
+		return user, &spotifyErrors.SpotifyError{
+			StatusCode: res.StatusCode,
+			Status:     res.Status,
+			Message:    string(body),
+		}
 	} else if res.StatusCode != http.StatusOK {
 		// probably a bad request on our part
 		env.Logger.ErrorContext(ctx, "Unsuccessful request", slog.Any("res", res))
-		return spotifyModels.User{}, spotify.Error{}, fmt.Errorf("Unsuccessful request: %s", res.Status)
+		return user, fmt.Errorf("Unsuccessful request: %s", res.Status)
 	}
 
 	// Decode response
 	env.Logger.DebugContext(ctx, "Decoding spotify validation response")
-	var user spotifyModels.User
 	decoder := json.NewDecoder(res.Body)
 	defer res.Body.Close()
 	err = hathrJson.DecodeJson(&user, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error decoding response", slog.Any("error", err))
-		return spotifyModels.User{}, spotify.Error{}, err
+		return user, err
 	}
 
-	return user, spotify.Error{}, nil
+	return user, nil
 }

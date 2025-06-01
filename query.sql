@@ -17,7 +17,7 @@ RETURNING *;
 -- name: SearchUsers :many
 SELECT *, similarity(username, @username::text) AS sim_score
 FROM users
-WHERE similarity(username, @username::text) > 0.2
+WHERE similarity(username, @username::text) > 0.2 AND @id <> id
 ORDER BY sim_score DESC
 LIMIT 10;
 

@@ -1194,10 +1194,33 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Query parameter 'username' is required", http.StatusBadRequest)
 		return
 	}
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
 
 	// Search for users
 	env.Logger.DebugContext(ctx, "Searching for users in DB")
-	dbUsers, err := env.Database.SearchUsers(ctx, query)
+	dbUsers, err := env.Database.SearchUsers(ctx, database.SearchUsersParams{
+		Username: query,
+		ID:       uuid.MustParse(userID),
+	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to search users", slog.Any("error", err))
 		http.Error(w, "Failed to search users", http.StatusInternalServerError)

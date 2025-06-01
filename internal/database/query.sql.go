@@ -477,10 +477,15 @@ func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipPara
 const searchUsers = `-- name: SearchUsers :many
 SELECT id, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at, similarity(username, $1::text) AS sim_score
 FROM users
-WHERE similarity(username, $1::text) > 0.2
+WHERE similarity(username, $1::text) > 0.2 AND $2 <> id
 ORDER BY sim_score DESC
 LIMIT 10
 `
+
+type SearchUsersParams struct {
+	Username string
+	ID       uuid.UUID
+}
 
 type SearchUsersRow struct {
 	ID               uuid.UUID
@@ -496,8 +501,8 @@ type SearchUsersRow struct {
 	SimScore         float32
 }
 
-func (q *Queries) SearchUsers(ctx context.Context, username string) ([]SearchUsersRow, error) {
-	rows, err := q.db.Query(ctx, searchUsers, username)
+func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]SearchUsersRow, error) {
+	rows, err := q.db.Query(ctx, searchUsers, arg.Username, arg.ID)
 	if err != nil {
 		return nil, err
 	}

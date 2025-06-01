@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,6 +35,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/zmb3/spotify/v2"
 )
+
+const usernameRegex = `^[a-zA-Z0-9_.]{1,20}$`
 
 func buildSpotifyPublicUser(spotifyUserData spotifyModels.User) spotifyModels.PublicUser {
 	return spotifyModels.PublicUser{
@@ -130,6 +133,7 @@ func buildJWT(user database.User, spotifyData spotifyModels.User, key string) (s
 		UserID:     user.ID.String(),
 		Role:       string(user.Role),
 		Registered: !user.RegisteredAt.Time.IsZero(),
+		Username:   user.Username.String,
 		SpotifyData: hathrJWT.SpotifyClaims{
 			DisplayName: spotifyData.DisplayName,
 			Email:       spotifyData.Email,
@@ -330,9 +334,15 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
-	if len(signupRequest.Username) > 20 {
-		env.Logger.ErrorContext(ctx, "Username too long", slog.Int("length", len(signupRequest.Username)))
-		http.Error(w, "Username too long", http.StatusBadRequest)
+	match, err := regexp.MatchString(usernameRegex, signupRequest.Username)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate username regex", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if !match {
+		env.Logger.ErrorContext(ctx, "Invalid username", slog.String("username", signupRequest.Username))
+		http.Error(w, "Invalid username", http.StatusBadRequest)
 		return
 	}
 
@@ -401,8 +411,8 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return JWT
-	w.WriteHeader(http.StatusNoContent)
 	w.Header().Add("Authorization", fmt.Sprintf("Bearer %s", signedJWT))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func RefreshSession(w http.ResponseWriter, r *http.Request) {

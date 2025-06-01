@@ -51,6 +51,7 @@ type JWTParams struct {
 	Role        string
 	UserID      string
 	Registered  bool
+	Username    string
 	SpotifyData SpotifyClaims
 }
 
@@ -76,6 +77,7 @@ func CreateJWT(params JWTParams, privateKeyBytes []byte) (string, error) {
 		"exp":        time.Now().Add(time.Hour).Unix(),
 		"role":       params.Role,
 		"registered": params.Registered,
+		"username":   params.Username,
 		"spotify": map[string]interface{}{
 			"display_name": params.SpotifyData.DisplayName,
 			"email":        params.SpotifyData.Email,

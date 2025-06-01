@@ -46,5 +46,5 @@ type ResponseToFriendRequest struct {
 }
 
 type CompleteSignup struct {
-	Username string `json:"username" validate:"required,alphanum,containsany=_-."`
+	Username string `json:"username" validate:"required"`
 }

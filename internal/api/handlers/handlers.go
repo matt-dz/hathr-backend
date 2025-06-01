@@ -1172,10 +1172,10 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve request parameters
 	env.Logger.DebugContext(ctx, "Retrieving request parameters")
-	query := r.URL.Query().Get("username")
+	query := r.URL.Query().Get("q")
 	if query == "" {
-		env.Logger.ErrorContext(ctx, "Missing query parameter 'username'")
-		http.Error(w, "Query parameter 'username' is required", http.StatusBadRequest)
+		env.Logger.ErrorContext(ctx, "Missing query parameter 'q'")
+		http.Error(w, "Query parameter 'q' is required", http.StatusBadRequest)
 		return
 	}
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)

@@ -1210,7 +1210,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	users := make([]responses.UserWithFriendshipStatus, len(dbUsers))
+	users := make([]responses.UserWithFriendship, len(dbUsers))
 	for i, dbUser := range dbUsers {
 		// Unmarshal spotify data
 		var spotifyUserData spotifyModels.User
@@ -1221,19 +1221,20 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		users[i] = responses.UserWithFriendshipStatus{
-			PublicUser: models.PublicUser{
-				ID:              dbUser.User.ID,
-				Username:        dbUser.User.Username.String,
-				DisplayName:     dbUser.User.DisplayName.String,
-				SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
-			},
+		users[i] = responses.UserWithFriendship{
+			User:       buildPublicUser(dbUser.User, spotifyUserData),
+			Friendship: nil,
 		}
-		status := string(dbUser.FriendshipStatus.FriendshipStatus)
-		if dbUser.FriendshipStatus.Valid {
-			users[i].FriendshipStatus = &status
-		} else {
-			users[i].FriendshipStatus = nil
+		if dbUser.Status.Valid {
+			friendship := database.Friendship{
+				UserAID:     dbUser.UserAID,
+				UserBID:     dbUser.UserBID,
+				RequesterID: dbUser.RequesterID,
+				Status:      dbUser.Status.FriendshipStatus,
+				RequestedAt: dbUser.RequestedAt,
+				RespondedAt: dbUser.RespondedAt,
+			}
+			users[i].Friendship = &friendship
 		}
 	}
 

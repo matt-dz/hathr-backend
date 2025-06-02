@@ -25,8 +25,8 @@ UPDATE friendships
 `
 
 type AcceptFriendRequestParams struct {
-	ResponderID uuid.UUID
-	RespondeeID uuid.UUID
+	ResponderID uuid.UUID `json:"responder_id"`
+	RespondeeID uuid.UUID `json:"respondee_id"`
 }
 
 func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendRequestParams) (int64, error) {
@@ -57,8 +57,8 @@ VALUES (
 `
 
 type CreateFriendRequestParams struct {
-	Requester uuid.UUID
-	Requestee uuid.UUID
+	Requester uuid.UUID `json:"requester"`
+	Requestee uuid.UUID `json:"requestee"`
 }
 
 func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) (int64, error) {
@@ -76,11 +76,11 @@ RETURNING id
 `
 
 type CreateMonthlyPlaylistParams struct {
-	UserID uuid.UUID
-	Tracks [][]byte
-	Year   int16
-	Month  int16
-	Name   string
+	UserID uuid.UUID `json:"user_id"`
+	Tracks [][]byte  `json:"tracks"`
+	Year   int16     `json:"year"`
+	Month  int16     `json:"month"`
+	Name   string    `json:"name"`
 }
 
 func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPlaylistParams) (uuid.UUID, error) {
@@ -105,9 +105,9 @@ RETURNING id, display_name, username, email, registered_at, role, spotify_user_i
 `
 
 type CreateSpotifyUserParams struct {
-	SpotifyUserID   string
-	Email           string
-	SpotifyUserData []byte
+	SpotifyUserID   string `json:"spotify_user_id"`
+	Email           string `json:"email"`
+	SpotifyUserData []byte `json:"spotify_user_data"`
 }
 
 func (q *Queries) CreateSpotifyUser(ctx context.Context, arg CreateSpotifyUserParams) (User, error) {
@@ -137,8 +137,8 @@ DELETE FROM friendships
 `
 
 type DeleteFriendRequestParams struct {
-	RequesterID uuid.UUID
-	RequesteeID uuid.UUID
+	RequesterID uuid.UUID `json:"requester_id"`
+	RequesteeID uuid.UUID `json:"requestee_id"`
 }
 
 func (q *Queries) DeleteFriendRequest(ctx context.Context, arg DeleteFriendRequestParams) (int64, error) {
@@ -330,8 +330,8 @@ AND f.status = 'pending'
 `
 
 type ListIncomingRequestsRow struct {
-	User       User
-	Friendship Friendship
+	User       User       `json:"user"`
+	Friendship Friendship `json:"friendship"`
 }
 
 func (q *Queries) ListIncomingRequests(ctx context.Context, userAID uuid.UUID) ([]ListIncomingRequestsRow, error) {
@@ -386,8 +386,8 @@ AND f.status = 'pending'
 `
 
 type ListOutgoingRequestsRow struct {
-	User       User
-	Friendship Friendship
+	User       User       `json:"user"`
+	Friendship Friendship `json:"friendship"`
 }
 
 func (q *Queries) ListOutgoingRequests(ctx context.Context, userAID uuid.UUID) ([]ListOutgoingRequestsRow, error) {
@@ -434,8 +434,8 @@ DELETE FROM friendships
 `
 
 type RemoveFriendshipParams struct {
-	UserAID uuid.UUID
-	UserBID uuid.UUID
+	UserAID uuid.UUID `json:"user_a_id"`
+	UserBID uuid.UUID `json:"user_b_id"`
 }
 
 func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipParams) (int64, error) {
@@ -448,34 +448,37 @@ func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipPara
 
 const searchUsers = `-- name: SearchUsers :many
 SELECT
-  u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
-  similarity(u.username, $1::text) AS sim_score,
-  f.status AS friendship_status
+    u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
+    f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM users u
 LEFT JOIN friendships f
-  ON f.user_a_id = LEAST($2::uuid,  u.id)
- AND f.user_b_id = GREATEST($2::uuid, u.id)
+  ON f.user_a_id = LEAST($1::uuid,  u.id)
+ AND f.user_b_id = GREATEST($1::uuid, u.id)
 WHERE
-  similarity(u.username, $1::text) > 0.2
-  AND $2::uuid <> u.id
+  similarity(u.username, $2::text) > 0.2
+  AND $1::uuid <> u.id
   AND (f.status IS NULL OR f.status <> 'blocked')
-ORDER BY sim_score DESC
+ORDER BY similarity(u.username, $2::text) DESC
 LIMIT 10
 `
 
 type SearchUsersParams struct {
-	Username string
-	ID       uuid.UUID
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
 }
 
 type SearchUsersRow struct {
-	User             User
-	SimScore         float32
-	FriendshipStatus NullFriendshipStatus
+	User        User                 `json:"user"`
+	UserAID     uuid.UUID            `json:"user_a_id"`
+	UserBID     uuid.UUID            `json:"user_b_id"`
+	RequesterID uuid.UUID            `json:"requester_id"`
+	Status      NullFriendshipStatus `json:"status"`
+	RequestedAt pgtype.Timestamp     `json:"requested_at"`
+	RespondedAt pgtype.Timestamp     `json:"responded_at"`
 }
 
 func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]SearchUsersRow, error) {
-	rows, err := q.db.Query(ctx, searchUsers, arg.Username, arg.ID)
+	rows, err := q.db.Query(ctx, searchUsers, arg.ID, arg.Username)
 	if err != nil {
 		return nil, err
 	}
@@ -495,8 +498,12 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Sea
 			&i.User.CreatedAt,
 			&i.User.RefreshToken,
 			&i.User.RefreshExpiresAt,
-			&i.SimScore,
-			&i.FriendshipStatus,
+			&i.UserAID,
+			&i.UserBID,
+			&i.RequesterID,
+			&i.Status,
+			&i.RequestedAt,
+			&i.RespondedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -516,9 +523,9 @@ RETURNING id, display_name, username, email, registered_at, role, spotify_user_i
 `
 
 type SignUpUserParams struct {
-	Username    pgtype.Text
-	DisplayName pgtype.Text
-	ID          uuid.UUID
+	Username    pgtype.Text `json:"username"`
+	DisplayName pgtype.Text `json:"display_name"`
+	ID          uuid.UUID   `json:"id"`
 }
 
 func (q *Queries) SignUpUser(ctx context.Context, arg SignUpUserParams) (User, error) {
@@ -547,9 +554,9 @@ UPDATE monthly_playlists
 `
 
 type UpdateVisibilityParams struct {
-	Visibility PlaylistVisibility
-	ID         uuid.UUID
-	UserID     uuid.UUID
+	Visibility PlaylistVisibility `json:"visibility"`
+	ID         uuid.UUID          `json:"id"`
+	UserID     uuid.UUID          `json:"user_id"`
 }
 
 func (q *Queries) UpdateVisibility(ctx context.Context, arg UpdateVisibilityParams) (int64, error) {
@@ -584,11 +591,11 @@ DO UPDATE SET
 `
 
 type UpsertSpotifyCredentialsParams struct {
-	UserID       string
-	AccessToken  string
-	TokenType    string
-	Scope        string
-	RefreshToken string
+	UserID       string `json:"user_id"`
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	Scope        string `json:"scope"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 func (q *Queries) UpsertSpotifyCredentials(ctx context.Context, arg UpsertSpotifyCredentialsParams) error {

@@ -57,11 +57,11 @@ type ListFriendRequests struct {
 	Requests []models.FriendRequest `json:"requests"`
 }
 
-type UserWithFriendshipStatus struct {
-	models.PublicUser
-	FriendshipStatus *string `json:"friendship_status"`
+type UserWithFriendship struct {
+	User       models.PublicUser    `json:"user"`
+	Friendship *database.Friendship `json:"friendship"`
 }
 
 type SearchUsers struct {
-	Users []UserWithFriendshipStatus `json:"users"`
+	Users []UserWithFriendship `json:"users"`
 }

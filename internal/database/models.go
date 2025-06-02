@@ -33,8 +33,8 @@ func (e *FriendshipStatus) Scan(src interface{}) error {
 }
 
 type NullFriendshipStatus struct {
-	FriendshipStatus FriendshipStatus
-	Valid            bool // Valid is true if FriendshipStatus is not NULL
+	FriendshipStatus FriendshipStatus `json:"friendship_status"`
+	Valid            bool             `json:"valid"` // Valid is true if FriendshipStatus is not NULL
 }
 
 // Scan implements the Scanner interface.
@@ -76,8 +76,8 @@ func (e *PlaylistVisibility) Scan(src interface{}) error {
 }
 
 type NullPlaylistVisibility struct {
-	PlaylistVisibility PlaylistVisibility
-	Valid              bool // Valid is true if PlaylistVisibility is not NULL
+	PlaylistVisibility PlaylistVisibility `json:"playlist_visibility"`
+	Valid              bool               `json:"valid"` // Valid is true if PlaylistVisibility is not NULL
 }
 
 // Scan implements the Scanner interface.
@@ -118,8 +118,8 @@ func (e *Role) Scan(src interface{}) error {
 }
 
 type NullRole struct {
-	Role  Role
-	Valid bool // Valid is true if Role is not NULL
+	Role  Role `json:"role"`
+	Valid bool `json:"valid"` // Valid is true if Role is not NULL
 }
 
 // Scan implements the Scanner interface.
@@ -141,48 +141,48 @@ func (ns NullRole) Value() (driver.Value, error) {
 }
 
 type Friendship struct {
-	UserAID     uuid.UUID
-	UserBID     uuid.UUID
-	RequesterID uuid.UUID
-	Status      FriendshipStatus
-	RequestedAt pgtype.Timestamp
-	RespondedAt pgtype.Timestamp
+	UserAID     uuid.UUID        `json:"user_a_id"`
+	UserBID     uuid.UUID        `json:"user_b_id"`
+	RequesterID uuid.UUID        `json:"requester_id"`
+	Status      FriendshipStatus `json:"status"`
+	RequestedAt pgtype.Timestamp `json:"requested_at"`
+	RespondedAt pgtype.Timestamp `json:"responded_at"`
 }
 
 type MonthlyPlaylist struct {
-	ID         uuid.UUID
-	UserID     uuid.UUID
-	Tracks     [][]byte
-	Year       int16
-	Month      int16
-	Name       string
-	CreatedAt  pgtype.Timestamptz
-	Visibility PlaylistVisibility
+	ID         uuid.UUID          `json:"id"`
+	UserID     uuid.UUID          `json:"user_id"`
+	Tracks     [][]byte           `json:"tracks"`
+	Year       int16              `json:"year"`
+	Month      int16              `json:"month"`
+	Name       string             `json:"name"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	Visibility PlaylistVisibility `json:"visibility"`
 }
 
 type PrivateKey struct {
-	Kid   int32
-	Value string
+	Kid   int32  `json:"kid"`
+	Value string `json:"value"`
 }
 
 type SpotifyToken struct {
-	UserID       string
-	AccessToken  string
-	TokenType    string
-	Scope        string
-	RefreshToken string
+	UserID       string `json:"user_id"`
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	Scope        string `json:"scope"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 type User struct {
-	ID               uuid.UUID
-	DisplayName      pgtype.Text
-	Username         pgtype.Text
-	Email            string
-	RegisteredAt     pgtype.Timestamp
-	Role             Role
-	SpotifyUserID    string
-	SpotifyUserData  []byte
-	CreatedAt        pgtype.Timestamp
-	RefreshToken     uuid.UUID
-	RefreshExpiresAt pgtype.Timestamp
+	ID               uuid.UUID        `json:"id"`
+	DisplayName      pgtype.Text      `json:"display_name"`
+	Username         pgtype.Text      `json:"username"`
+	Email            string           `json:"email"`
+	RegisteredAt     pgtype.Timestamp `json:"registered_at"`
+	Role             Role             `json:"role"`
+	SpotifyUserID    string           `json:"spotify_user_id"`
+	SpotifyUserData  []byte           `json:"spotify_user_data"`
+	CreatedAt        pgtype.Timestamp `json:"created_at"`
+	RefreshToken     uuid.UUID        `json:"refresh_token"`
+	RefreshExpiresAt pgtype.Timestamp `json:"refresh_expires_at"`
 }

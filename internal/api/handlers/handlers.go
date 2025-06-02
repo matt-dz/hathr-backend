@@ -1047,7 +1047,7 @@ func CancelFriendRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
-	friendID := mux.Vars(r)["id"]
+	requesteeID := mux.Vars(r)["id"]
 
 	// Validate request parameters
 	if err := uuid.Validate(userID); err != nil {
@@ -1055,7 +1055,7 @@ func CancelFriendRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid user ID in JWT", http.StatusBadRequest)
 		return
 	}
-	if err := uuid.Validate(friendID); err != nil {
+	if err := uuid.Validate(requesteeID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid friend ID in route parameter", slog.Any("error", err))
 		http.Error(w, "Invalid friend ID in route parameter", http.StatusBadRequest)
 		return
@@ -1063,10 +1063,9 @@ func CancelFriendRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Remove friend request in the database
 	env.Logger.DebugContext(ctx, "Removing friend request in DB")
-	rows, err := env.Database.CancelFriendRequest(ctx, database.CancelFriendRequestParams{
-		UserAID:     uuid.MustParse(userID),
-		UserBID:     uuid.MustParse(friendID),
+	rows, err := env.Database.DeleteFriendRequest(ctx, database.DeleteFriendRequestParams{
 		RequesterID: uuid.MustParse(userID),
+		RequesteeID: uuid.MustParse(requesteeID),
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to cancel friend request", slog.Any("error", err))
@@ -1099,7 +1098,7 @@ func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
-	friendID := mux.Vars(r)["id"]
+	requesterID := mux.Vars(r)["id"]
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
@@ -1128,7 +1127,7 @@ func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
 	}
-	if err := uuid.Validate(friendID); err != nil {
+	if err := uuid.Validate(requesterID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid friend ID in route parameter", slog.Any("error", err))
 		http.Error(w, "Invalid friend ID in route parameter", http.StatusBadRequest)
 		return
@@ -1139,13 +1138,13 @@ func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {
 	var rows int64
 	if friendRequest.Status == "accepted" {
 		rows, err = env.Database.AcceptFriendRequest(ctx, database.AcceptFriendRequestParams{
-			Responder: uuid.MustParse(userID),
-			Respondee: uuid.MustParse(friendID),
+			ResponderID: uuid.MustParse(userID),
+			RespondeeID: uuid.MustParse(requesterID),
 		})
 	} else {
-		rows, err = env.Database.RejectFriendRequest(ctx, database.RejectFriendRequestParams{
-			Responder: uuid.MustParse(userID),
-			Respondee: uuid.MustParse(friendID),
+		rows, err = env.Database.DeleteFriendRequest(ctx, database.DeleteFriendRequestParams{
+			RequesteeID: uuid.MustParse(userID),
+			RequesterID: uuid.MustParse(requesterID),
 		})
 	}
 

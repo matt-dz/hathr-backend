@@ -25,33 +25,12 @@ UPDATE friendships
 `
 
 type AcceptFriendRequestParams struct {
-	Responder uuid.UUID
-	Respondee uuid.UUID
+	ResponderID uuid.UUID
+	RespondeeID uuid.UUID
 }
 
 func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendRequestParams) (int64, error) {
-	result, err := q.db.Exec(ctx, acceptFriendRequest, arg.Responder, arg.Respondee)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const cancelFriendRequest = `-- name: CancelFriendRequest :execrows
-DELETE FROM friendships
-    WHERE user_a_id = LEAST($1::uuid, $2::uuid) AND user_b_id = GREATEST($1::uuid, $2::uuid)
-    AND status = 'pending'
-    AND requester_id = $3::uuid
-`
-
-type CancelFriendRequestParams struct {
-	UserAID     uuid.UUID
-	UserBID     uuid.UUID
-	RequesterID uuid.UUID
-}
-
-func (q *Queries) CancelFriendRequest(ctx context.Context, arg CancelFriendRequestParams) (int64, error) {
-	result, err := q.db.Exec(ctx, cancelFriendRequest, arg.UserAID, arg.UserBID, arg.RequesterID)
+	result, err := q.db.Exec(ctx, acceptFriendRequest, arg.ResponderID, arg.RespondeeID)
 	if err != nil {
 		return 0, err
 	}
@@ -75,14 +54,6 @@ VALUES (
   now(),
   NULL
 )
-ON CONFLICT (user_a_id, user_b_id)
-DO UPDATE
-  SET
-    status       = 'pending',
-    requested_at = now(),
-    requester_id = EXCLUDED.requester_id,
-    responded_at = NULL
-  WHERE friendships.status = 'rejected'
 `
 
 type CreateFriendRequestParams struct {
@@ -156,6 +127,26 @@ func (q *Queries) CreateSpotifyUser(ctx context.Context, arg CreateSpotifyUserPa
 		&i.RefreshExpiresAt,
 	)
 	return i, err
+}
+
+const deleteFriendRequest = `-- name: DeleteFriendRequest :execrows
+DELETE FROM friendships
+    WHERE user_a_id = LEAST($1::uuid, $2::uuid) AND user_b_id = GREATEST($1::uuid, $2::uuid)
+    AND status = 'pending'
+    AND requester_id = $1::uuid
+`
+
+type DeleteFriendRequestParams struct {
+	RequesterID uuid.UUID
+	RequesteeID uuid.UUID
+}
+
+func (q *Queries) DeleteFriendRequest(ctx context.Context, arg DeleteFriendRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFriendRequest, arg.RequesterID, arg.RequesteeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getLatestPrivateKey = `-- name: GetLatestPrivateKey :one
@@ -435,31 +426,6 @@ func (q *Queries) ListOutgoingRequests(ctx context.Context, userAID uuid.UUID) (
 		return nil, err
 	}
 	return items, nil
-}
-
-const rejectFriendRequest = `-- name: RejectFriendRequest :execrows
-UPDATE friendships
-    SET
-        status = 'rejected',
-        responded_at = NOW()
-    WHERE
-        status = 'pending' AND
-        user_a_id = LEAST($1::uuid, $2::uuid) AND
-        user_b_id = GREATEST($1::uuid, $2::uuid) AND
-        requester_id <> $1::uuid
-`
-
-type RejectFriendRequestParams struct {
-	Responder uuid.UUID
-	Respondee uuid.UUID
-}
-
-func (q *Queries) RejectFriendRequest(ctx context.Context, arg RejectFriendRequestParams) (int64, error) {
-	result, err := q.db.Exec(ctx, rejectFriendRequest, arg.Responder, arg.Respondee)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
 }
 
 const removeFriendship = `-- name: RemoveFriendship :execrows

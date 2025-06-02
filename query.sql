@@ -97,20 +97,12 @@ VALUES (
   'pending',
   now(),
   NULL
-)
-ON CONFLICT (user_a_id, user_b_id)
-DO UPDATE
-  SET
-    status       = 'pending',
-    requested_at = now(),
-    requester_id = EXCLUDED.requester_id,
-    responded_at = NULL
-  WHERE friendships.status = 'rejected';
+);
 
 
--- name: CancelFriendRequest :execrows
+-- name: DeleteFriendRequest :execrows
 DELETE FROM friendships
-    WHERE user_a_id = LEAST(@user_a_id::uuid, @user_b_id::uuid) AND user_b_id = GREATEST(@user_a_id::uuid, @user_b_id::uuid)
+    WHERE user_a_id = LEAST(@requester_id::uuid, @requestee_id::uuid) AND user_b_id = GREATEST(@requester_id::uuid, @requestee_id::uuid)
     AND status = 'pending'
     AND requester_id = @requester_id::uuid;
 
@@ -121,20 +113,9 @@ UPDATE friendships
         responded_at = NOW()
     WHERE
         status = 'pending' AND
-        user_a_id = LEAST(@responder::uuid, @respondee::uuid) AND
-        user_b_id = GREATEST(@responder::uuid, @respondee::uuid) AND
-        requester_id <> @responder::uuid;
-
--- name: RejectFriendRequest :execrows
-UPDATE friendships
-    SET
-        status = 'rejected',
-        responded_at = NOW()
-    WHERE
-        status = 'pending' AND
-        user_a_id = LEAST(@responder::uuid, @respondee::uuid) AND
-        user_b_id = GREATEST(@responder::uuid, @respondee::uuid) AND
-        requester_id <> @responder::uuid;
+        user_a_id = LEAST(@responder_id::uuid, @respondee_id::uuid) AND
+        user_b_id = GREATEST(@responder_id::uuid, @respondee_id::uuid) AND
+        requester_id <> @responder_id::uuid;
 
 -- name: RemoveFriendship :execrows
 DELETE FROM friendships

@@ -30,7 +30,6 @@ CREATE INDEX users_username_trgm_gin
 CREATE TYPE friendship_status AS ENUM(
     'pending',
     'accepted',
-    'rejected',
     'blocked'
 );
 

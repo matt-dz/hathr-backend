@@ -1211,37 +1211,41 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	users := make([]models.PublicUser, len(dbUsers))
+	users := make([]responses.UserWithFriendshipStatus, len(dbUsers))
 	for i, dbUser := range dbUsers {
 		// Unmarshal spotify data
 		var spotifyUserData spotifyModels.User
-		err = json.Unmarshal(dbUser.SpotifyUserData, &spotifyUserData)
+		err = json.Unmarshal(dbUser.User.SpotifyUserData, &spotifyUserData)
 		if err != nil {
 			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify data", slog.Any("error", err))
 			http.Error(w, "Unable to unmarshal user data", http.StatusInternalServerError)
 			return
 		}
 
-		users[i] = models.PublicUser{
-			ID:          dbUser.ID,
-			Username:    dbUser.Username.String,
-			DisplayName: dbUser.DisplayName.String,
-			SpotifyUserData: spotifyModels.PublicUser{
-				DisplayName: spotifyUserData.DisplayName,
-				Images:      spotifyUserData.Images,
+		users[i] = responses.UserWithFriendshipStatus{
+			PublicUser: models.PublicUser{
+				ID:          dbUser.User.ID,
+				Username:    dbUser.User.Username.String,
+				DisplayName: dbUser.User.DisplayName.String,
 			},
 		}
-	}
+		status := string(dbUser.FriendshipStatus.FriendshipStatus)
+		if dbUser.FriendshipStatus.Valid {
+			users[i].FriendshipStatus = &status
+		} else {
+			users[i].FriendshipStatus = nil
+		}
 
-	// Encode response
-	env.Logger.DebugContext(ctx, "Encoding response")
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(responses.SearchUsers{
-		Users: users,
-	})
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to encode search response", slog.Any("error", err))
-		http.Error(w, "Failed to encode search response", http.StatusInternalServerError)
-		return
+		// Encode response
+		env.Logger.DebugContext(ctx, "Encoding response")
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(responses.SearchUsers{
+			Users: users,
+		})
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to encode search response", slog.Any("error", err))
+			http.Error(w, "Failed to encode search response", http.StatusInternalServerError)
+			return
+		}
 	}
 }

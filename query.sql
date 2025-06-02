@@ -15,9 +15,18 @@ WHERE id = $3
 RETURNING *;
 
 -- name: SearchUsers :many
-SELECT *, similarity(username, @username::text) AS sim_score
-FROM users
-WHERE similarity(username, @username::text) > 0.2 AND @id <> id
+SELECT
+  sqlc.embed(u),
+  similarity(u.username, @username::text) AS sim_score,
+  f.status AS friendship_status
+FROM users u
+LEFT JOIN friendships f
+  ON f.user_a_id = LEAST(@id::uuid,  u.id)
+ AND f.user_b_id = GREATEST(@id::uuid, u.id)
+WHERE
+  similarity(u.username, @username::text) > 0.2
+  AND @id::uuid <> u.id
+  AND f.status <> 'blocked'
 ORDER BY sim_score DESC
 LIMIT 10;
 

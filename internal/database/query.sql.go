@@ -481,9 +481,18 @@ func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipPara
 }
 
 const searchUsers = `-- name: SearchUsers :many
-SELECT id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at, similarity(username, $1::text) AS sim_score
-FROM users
-WHERE similarity(username, $1::text) > 0.2 AND $2 <> id
+SELECT
+  u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
+  similarity(u.username, $1::text) AS sim_score,
+  f.status AS friendship_status
+FROM users u
+LEFT JOIN friendships f
+  ON f.user_a_id = LEAST($2::uuid,  u.id)
+ AND f.user_b_id = GREATEST($2::uuid, u.id)
+WHERE
+  similarity(u.username, $1::text) > 0.2
+  AND $2::uuid <> u.id
+  AND f.status <> 'blocked'
 ORDER BY sim_score DESC
 LIMIT 10
 `
@@ -494,18 +503,9 @@ type SearchUsersParams struct {
 }
 
 type SearchUsersRow struct {
-	ID               uuid.UUID
-	DisplayName      pgtype.Text
-	Username         pgtype.Text
-	Email            string
-	RegisteredAt     pgtype.Timestamp
-	Role             Role
-	SpotifyUserID    string
-	SpotifyUserData  []byte
-	CreatedAt        pgtype.Timestamp
-	RefreshToken     uuid.UUID
-	RefreshExpiresAt pgtype.Timestamp
+	User             User
 	SimScore         float32
+	FriendshipStatus NullFriendshipStatus
 }
 
 func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]SearchUsersRow, error) {
@@ -518,18 +518,19 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Sea
 	for rows.Next() {
 		var i SearchUsersRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.DisplayName,
-			&i.Username,
-			&i.Email,
-			&i.RegisteredAt,
-			&i.Role,
-			&i.SpotifyUserID,
-			&i.SpotifyUserData,
-			&i.CreatedAt,
-			&i.RefreshToken,
-			&i.RefreshExpiresAt,
+			&i.User.ID,
+			&i.User.DisplayName,
+			&i.User.Username,
+			&i.User.Email,
+			&i.User.RegisteredAt,
+			&i.User.Role,
+			&i.User.SpotifyUserID,
+			&i.User.SpotifyUserData,
+			&i.User.CreatedAt,
+			&i.User.RefreshToken,
+			&i.User.RefreshExpiresAt,
 			&i.SimScore,
+			&i.FriendshipStatus,
 		); err != nil {
 			return nil, err
 		}

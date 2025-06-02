@@ -145,7 +145,6 @@ ON (u.id = CASE
         ELSE f.user_a_id
     END)
 WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
-AND f.requester_id = $1
 AND f.status = 'pending';
 
 -- name: ListOutgoingRequests :many

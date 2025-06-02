@@ -882,11 +882,11 @@ func ListRequests(w http.ResponseWriter, r *http.Request) {
 
 	// Validate parameters
 	env.Logger.DebugContext(ctx, "Validating parameters")
-	requestType := strings.ToLower(r.URL.Query().Get("direction"))
+	direction := strings.ToLower(r.URL.Query().Get("direction"))
 
-	if requestType != "incoming" && requestType != "outgoing" && requestType != "all" {
-		env.Logger.ErrorContext(ctx, "Invalid direction", slog.String("direction", requestType))
-		http.Error(w, "direction must be 'incoming' or 'outgoing'", http.StatusBadRequest)
+	if direction != "incoming" && direction != "outgoing" && direction != "all" {
+		env.Logger.ErrorContext(ctx, "Invalid direction", slog.String("direction", direction))
+		http.Error(w, "Invalid direction", http.StatusBadRequest)
 		return
 	}
 	if err := uuid.Validate(userID); err != nil {
@@ -897,7 +897,7 @@ func ListRequests(w http.ResponseWriter, r *http.Request) {
 
 	// List friend requests
 	var friendRequests []models.FriendRequest
-	if requestType == "incoming" {
+	if direction == "incoming" {
 		rows, err := env.Database.ListIncomingRequests(ctx, uuid.MustParse(userID))
 		if err != nil {
 			env.Logger.ErrorContext(ctx, "Unable to list requests", slog.Any("error", err))
@@ -910,7 +910,7 @@ func ListRequests(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-	} else if requestType == "outgoing" {
+	} else if direction == "outgoing" {
 		rows, err := env.Database.ListOutgoingRequests(ctx, uuid.MustParse(userID))
 		if err != nil {
 			env.Logger.ErrorContext(ctx, "Unable to list requests", slog.Any("error", err))
@@ -945,7 +945,7 @@ func ListRequests(w http.ResponseWriter, r *http.Request) {
 		Outgoing: make([]models.FriendRequest, 0),
 	}
 	for _, v := range friendRequests {
-		if v.User.ID == v.Friendship.RequesterID {
+		if v.User.ID != v.Friendship.RequesterID {
 			response.Outgoing = append(response.Outgoing, v)
 		} else {
 			response.Incoming = append(response.Incoming, v)

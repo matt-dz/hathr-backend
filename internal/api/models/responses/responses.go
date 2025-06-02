@@ -54,7 +54,8 @@ type ListFriends struct {
 }
 
 type ListFriendRequests struct {
-	Requests []models.FriendRequest `json:"requests"`
+	Outgoing []models.FriendRequest `json:"outgoing"`
+	Incoming []models.FriendRequest `json:"incoming"`
 }
 
 type UserWithFriendship struct {

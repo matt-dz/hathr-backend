@@ -133,6 +133,21 @@ JOIN users u
 WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
   AND f.status = 'accepted';
 
+
+-- name: ListRequests :many
+SELECT
+    sqlc.embed(u),
+    sqlc.embed(f)
+FROM friendships f
+JOIN users u
+ON (u.id = CASE
+        WHEN f.user_a_id = $1 THEN f.user_b_id
+        ELSE f.user_a_id
+    END)
+WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
+AND f.requester_id = $1
+AND f.status = 'pending';
+
 -- name: ListOutgoingRequests :many
 SELECT sqlc.embed(u), sqlc.embed(f)
 FROM friendships f

@@ -3,7 +3,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,76 +56,54 @@ func buildPublicUser(user database.User, spotifyUserData spotifyModels.User) mod
 	}
 }
 
-func listOutgoingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UUID, w http.ResponseWriter) ([]models.FriendRequest, error) {
-
-	response := make([]models.FriendRequest, 0)
-
-	env.Logger.DebugContext(ctx, "Listing outgoing friend requests from DB")
-	friendRequests, err := env.Database.ListOutgoingRequests(ctx, userID)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Unable to list friend requests", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return response, err
-	}
-
-	// Process requests data
-	env.Logger.DebugContext(ctx, "Processing friend requests data")
-	response = make([]models.FriendRequest, len(friendRequests))
-	for i, req := range friendRequests {
+func copyOutgoingRequeststoFriendRequest(row []database.ListOutgoingRequestsRow) ([]models.FriendRequest, error) {
+	response := make([]models.FriendRequest, len(row))
+	for i, v := range row {
 		var spotifyUserData spotifyModels.User
-		err := json.Unmarshal(req.User.SpotifyUserData, &spotifyUserData)
+		err := json.Unmarshal(v.User.SpotifyUserData, &spotifyUserData)
 		if err != nil {
-			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify user data", slog.Any("error", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return response, err
 		}
 
 		response[i] = models.FriendRequest{
-			UserAID:     req.Friendship.UserAID,
-			UserBID:     req.Friendship.UserBID,
-			RequesterID: req.Friendship.RequesterID,
-			Status:      string(req.Friendship.Status),
-			RequestedAt: req.Friendship.RequestedAt.Time,
-			FriendData:  buildPublicUser(req.User, spotifyUserData),
+			Friendship: v.Friendship,
+			User:       buildPublicUser(v.User, spotifyUserData),
 		}
 	}
-
 	return response, nil
 }
 
-func listIncomingRequests(env *hathrEnv.Env, ctx context.Context, userID uuid.UUID, w http.ResponseWriter) ([]models.FriendRequest, error) {
-
-	response := make([]models.FriendRequest, 0)
-
-	env.Logger.DebugContext(ctx, "Listing incoming friend requests from DB")
-	friendRequests, err := env.Database.ListIncomingRequests(ctx, userID)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Unable to list friend requests", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return response, err
-	}
-
-	// Process requests data
-	env.Logger.DebugContext(ctx, "Processing friend requests data")
-	response = make([]models.FriendRequest, len(friendRequests))
-	for i, req := range friendRequests {
+func copyIncomingRequeststoFriendRequest(row []database.ListIncomingRequestsRow) ([]models.FriendRequest, error) {
+	response := make([]models.FriendRequest, len(row))
+	for i, v := range row {
 		var spotifyUserData spotifyModels.User
-		err := json.Unmarshal(req.User.SpotifyUserData, &spotifyUserData)
+		err := json.Unmarshal(v.User.SpotifyUserData, &spotifyUserData)
 		if err != nil {
-			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify user data", slog.Any("error", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return response, err
 		}
+
 		response[i] = models.FriendRequest{
-			UserAID:     req.Friendship.UserAID,
-			UserBID:     req.Friendship.UserBID,
-			RequesterID: req.Friendship.RequesterID,
-			Status:      string(req.Friendship.Status),
-			RequestedAt: req.Friendship.RequestedAt.Time,
-			FriendData:  buildPublicUser(req.User, spotifyUserData),
+			Friendship: v.Friendship,
+			User:       buildPublicUser(v.User, spotifyUserData),
 		}
 	}
+	return response, nil
+}
 
+func copyRequeststoFriendRequest(row []database.ListRequestsRow) ([]models.FriendRequest, error) {
+	response := make([]models.FriendRequest, len(row))
+	for i, v := range row {
+		var spotifyUserData spotifyModels.User
+		err := json.Unmarshal(v.User.SpotifyUserData, &spotifyUserData)
+		if err != nil {
+			return response, err
+		}
+
+		response[i] = models.FriendRequest{
+			Friendship: v.Friendship,
+			User:       buildPublicUser(v.User, spotifyUserData),
+		}
+	}
 	return response, nil
 }
 
@@ -907,7 +884,7 @@ func ListRequests(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	requestType := strings.ToLower(r.URL.Query().Get("direction"))
 
-	if requestType != "incoming" && requestType != "outgoing" {
+	if requestType != "incoming" && requestType != "outgoing" && requestType != "all" {
 		env.Logger.ErrorContext(ctx, "Invalid direction", slog.String("direction", requestType))
 		http.Error(w, "direction must be 'incoming' or 'outgoing'", http.StatusBadRequest)
 		return
@@ -921,20 +898,64 @@ func ListRequests(w http.ResponseWriter, r *http.Request) {
 	// List friend requests
 	var friendRequests []models.FriendRequest
 	if requestType == "incoming" {
-		friendRequests, err = listIncomingRequests(env, ctx, uuid.MustParse(userID), w)
+		rows, err := env.Database.ListIncomingRequests(ctx, uuid.MustParse(userID))
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to list requests", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		friendRequests, err = copyIncomingRequeststoFriendRequest(rows)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to copy request", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+	} else if requestType == "outgoing" {
+		rows, err := env.Database.ListOutgoingRequests(ctx, uuid.MustParse(userID))
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to list requests", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		friendRequests, err = copyOutgoingRequeststoFriendRequest(rows)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to copy request", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 	} else {
-		friendRequests, err = listOutgoingRequests(env, ctx, uuid.MustParse(userID), w)
+		rows, err := env.Database.ListRequests(ctx, uuid.MustParse(userID))
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to list requests", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		friendRequests, err = copyRequeststoFriendRequest(rows)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to copy request", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 	}
-	if err != nil {
-		return
+
+	// Process response
+	env.Logger.DebugContext(ctx, "Processing response")
+	response := responses.ListFriendRequests{
+		Incoming: make([]models.FriendRequest, 0),
+		Outgoing: make([]models.FriendRequest, 0),
+	}
+	for _, v := range friendRequests {
+		if v.User.ID == v.Friendship.RequesterID {
+			response.Outgoing = append(response.Outgoing, v)
+		} else {
+			response.Incoming = append(response.Incoming, v)
+		}
 	}
 
 	// Encode response
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(responses.ListFriendRequests{
-		Requests: friendRequests,
-	})
+	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode friend requests response", slog.Any("error", err))
 		http.Error(w, "Failed to encode friend requests response", http.StatusInternalServerError)

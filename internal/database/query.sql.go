@@ -441,6 +441,64 @@ func (q *Queries) ListOutgoingRequests(ctx context.Context, userAID uuid.UUID) (
 	return items, nil
 }
 
+const listRequests = `-- name: ListRequests :many
+SELECT
+    u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
+    f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
+FROM friendships f
+JOIN users u
+ON (u.id = CASE
+        WHEN f.user_a_id = $1 THEN f.user_b_id
+        ELSE f.user_a_id
+    END)
+WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
+AND f.requester_id = $1
+AND f.status = 'pending'
+`
+
+type ListRequestsRow struct {
+	User       User       `json:"user"`
+	Friendship Friendship `json:"friendship"`
+}
+
+func (q *Queries) ListRequests(ctx context.Context, userAID uuid.UUID) ([]ListRequestsRow, error) {
+	rows, err := q.db.Query(ctx, listRequests, userAID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRequestsRow
+	for rows.Next() {
+		var i ListRequestsRow
+		if err := rows.Scan(
+			&i.User.ID,
+			&i.User.DisplayName,
+			&i.User.Username,
+			&i.User.Email,
+			&i.User.RegisteredAt,
+			&i.User.Role,
+			&i.User.SpotifyUserID,
+			&i.User.SpotifyUserData,
+			&i.User.CreatedAt,
+			&i.User.RefreshToken,
+			&i.User.RefreshExpiresAt,
+			&i.Friendship.UserAID,
+			&i.Friendship.UserBID,
+			&i.Friendship.RequesterID,
+			&i.Friendship.Status,
+			&i.Friendship.RequestedAt,
+			&i.Friendship.RespondedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeFriendship = `-- name: RemoveFriendship :execrows
 DELETE FROM friendships
     WHERE user_a_id = LEAST($1::uuid, $2::uuid) AND user_b_id = GREATEST($1::uuid, $2::uuid)

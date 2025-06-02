@@ -1223,9 +1223,10 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 		users[i] = responses.UserWithFriendshipStatus{
 			PublicUser: models.PublicUser{
-				ID:          dbUser.User.ID,
-				Username:    dbUser.User.Username.String,
-				DisplayName: dbUser.User.DisplayName.String,
+				ID:              dbUser.User.ID,
+				Username:        dbUser.User.Username.String,
+				DisplayName:     dbUser.User.DisplayName.String,
+				SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
 			},
 		}
 		status := string(dbUser.FriendshipStatus.FriendshipStatus)
@@ -1234,17 +1235,17 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		} else {
 			users[i].FriendshipStatus = nil
 		}
+	}
 
-		// Encode response
-		env.Logger.DebugContext(ctx, "Encoding response")
-		w.Header().Set("Content-Type", "application/json")
-		err = json.NewEncoder(w).Encode(responses.SearchUsers{
-			Users: users,
-		})
-		if err != nil {
-			env.Logger.ErrorContext(ctx, "Failed to encode search response", slog.Any("error", err))
-			http.Error(w, "Failed to encode search response", http.StatusInternalServerError)
-			return
-		}
+	// Encode response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(responses.SearchUsers{
+		Users: users,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode search response", slog.Any("error", err))
+		http.Error(w, "Failed to encode search response", http.StatusInternalServerError)
+		return
 	}
 }

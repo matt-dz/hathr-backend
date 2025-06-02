@@ -458,7 +458,7 @@ LEFT JOIN friendships f
 WHERE
   similarity(u.username, $1::text) > 0.2
   AND $2::uuid <> u.id
-  AND f.status <> 'blocked'
+  AND (f.status IS NULL OR f.status <> 'blocked')
 ORDER BY sim_score DESC
 LIMIT 10
 `

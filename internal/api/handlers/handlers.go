@@ -989,7 +989,7 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 	// Creating friend request in the database
 	var pgErr *pgconn.PgError
 	env.Logger.DebugContext(ctx, "Creating friend request in DB")
-	rows, err := env.Database.CreateFriendRequest(ctx, database.CreateFriendRequestParams{
+	friendship, err := env.Database.CreateFriendRequest(ctx, database.CreateFriendRequestParams{
 		Requester: uuid.MustParse(userID),
 		Requestee: friendRequest.UserID,
 	})
@@ -1014,19 +1014,18 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	if rows == 0 {
-		env.Logger.ErrorContext(ctx, "No rows affected - request either already sent or users are already friends.")
-		http.Error(w, "Request already sent or users are already friends", http.StatusConflict)
-		return
-	}
 
 	// TODO: Send notification to the user about the friend request
-
-	env.Logger.DebugContext(ctx, "Successfully created friend request")
+	env.Logger.DebugContext(ctx, "Encoding response")
+	if err := json.NewEncoder(w).Encode(friendship); err != nil {
+		env.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusCreated)
 }
 
-func CancelFriendRequest(w http.ResponseWriter, r *http.Request) {
+func DeleteFriendRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
 	if !ok {
@@ -1082,7 +1081,7 @@ func CancelFriendRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {
+func UpdateFriendshipStatus(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
@@ -1105,7 +1104,7 @@ func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
-	var friendRequest requests.ResponseToFriendRequest
+	var friendRequest requests.UpdateFriendshipStatus
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	err = hathrJson.DecodeJson(&friendRequest, decoder)
@@ -1133,33 +1132,35 @@ func RespondToFriendRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: add blocking status
 	// Respond to friend request in the database
 	env.Logger.DebugContext(ctx, "Updating friend request in DB")
-	var rows int64
-	if friendRequest.Status == "accepted" {
-		rows, err = env.Database.AcceptFriendRequest(ctx, database.AcceptFriendRequestParams{
-			ResponderID: uuid.MustParse(userID),
-			RespondeeID: uuid.MustParse(requesterID),
-		})
-	} else {
-		rows, err = env.Database.DeleteFriendRequest(ctx, database.DeleteFriendRequestParams{
-			RequesteeID: uuid.MustParse(userID),
-			RequesterID: uuid.MustParse(requesterID),
-		})
-	}
+	friendship, err := env.Database.AcceptFriendRequest(ctx, database.AcceptFriendRequestParams{
+		ResponderID: uuid.MustParse(userID),
+		RespondeeID: uuid.MustParse(requesterID),
+	})
 
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.Logger.ErrorContext(ctx, "Friendship not found. Nothing updated", slog.Any("error", err))
+		http.Error(w, "Friend request not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to respond to friend request", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	if rows == 0 {
-		env.Logger.ErrorContext(ctx, "No rows affected. Friend request not found.", slog.Any("error", err))
-		http.Error(w, "Friend request not found", http.StatusNotFound)
+
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(responses.UpdateFriendshipStatus{
+		Friendship: friendship,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-
-	env.Logger.DebugContext(ctx, "Successfully responded to friend request")
 }
 
 func Search(w http.ResponseWriter, r *http.Request) {

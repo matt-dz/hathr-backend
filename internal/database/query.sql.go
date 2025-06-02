@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const acceptFriendRequest = `-- name: AcceptFriendRequest :execrows
+const acceptFriendRequest = `-- name: AcceptFriendRequest :one
 UPDATE friendships
     SET
         status = 'accepted',
@@ -22,6 +22,7 @@ UPDATE friendships
         user_a_id = LEAST($1::uuid, $2::uuid) AND
         user_b_id = GREATEST($1::uuid, $2::uuid) AND
         requester_id <> $1::uuid
+RETURNING user_a_id, user_b_id, requester_id, status, requested_at, responded_at
 `
 
 type AcceptFriendRequestParams struct {
@@ -29,15 +30,21 @@ type AcceptFriendRequestParams struct {
 	RespondeeID uuid.UUID `json:"respondee_id"`
 }
 
-func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendRequestParams) (int64, error) {
-	result, err := q.db.Exec(ctx, acceptFriendRequest, arg.ResponderID, arg.RespondeeID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendRequestParams) (Friendship, error) {
+	row := q.db.QueryRow(ctx, acceptFriendRequest, arg.ResponderID, arg.RespondeeID)
+	var i Friendship
+	err := row.Scan(
+		&i.UserAID,
+		&i.UserBID,
+		&i.RequesterID,
+		&i.Status,
+		&i.RequestedAt,
+		&i.RespondedAt,
+	)
+	return i, err
 }
 
-const createFriendRequest = `-- name: CreateFriendRequest :execrows
+const createFriendRequest = `-- name: CreateFriendRequest :one
 INSERT INTO friendships (
   user_a_id,
   user_b_id,
@@ -54,6 +61,7 @@ VALUES (
   now(),
   NULL
 )
+RETURNING user_a_id, user_b_id, requester_id, status, requested_at, responded_at
 `
 
 type CreateFriendRequestParams struct {
@@ -61,12 +69,18 @@ type CreateFriendRequestParams struct {
 	Requestee uuid.UUID `json:"requestee"`
 }
 
-func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) (int64, error) {
-	result, err := q.db.Exec(ctx, createFriendRequest, arg.Requester, arg.Requestee)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) (Friendship, error) {
+	row := q.db.QueryRow(ctx, createFriendRequest, arg.Requester, arg.Requestee)
+	var i Friendship
+	err := row.Scan(
+		&i.UserAID,
+		&i.UserBID,
+		&i.RequesterID,
+		&i.Status,
+		&i.RequestedAt,
+		&i.RespondedAt,
+	)
+	return i, err
 }
 
 const createMonthlyPlaylist = `-- name: CreateMonthlyPlaylist :one
@@ -133,7 +147,6 @@ const deleteFriendRequest = `-- name: DeleteFriendRequest :execrows
 DELETE FROM friendships
     WHERE user_a_id = LEAST($1::uuid, $2::uuid) AND user_b_id = GREATEST($1::uuid, $2::uuid)
     AND status = 'pending'
-    AND requester_id = $1::uuid
 `
 
 type DeleteFriendRequestParams struct {

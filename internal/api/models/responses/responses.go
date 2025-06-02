@@ -65,3 +65,7 @@ type UserWithFriendship struct {
 type SearchUsers struct {
 	Users []UserWithFriendship `json:"users"`
 }
+
+type UpdateFriendshipStatus struct {
+	Friendship database.Friendship `json:"friendship"`
+}

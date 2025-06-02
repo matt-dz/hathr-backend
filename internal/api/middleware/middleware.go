@@ -276,8 +276,8 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	friendRequests.Use(AuthorizeRequest)
 	friendRequests.HandleFunc("", handlers.ListRequests).Methods("GET", "OPTIONS")
 	friendRequests.HandleFunc("", handlers.CreateFriendRequest).Methods("POST", "OPTIONS")
-	friendRequests.HandleFunc("/{id}", handlers.RespondToFriendRequest).Methods("PATCH", "OPTIONS")
-	friendRequests.HandleFunc("/{id}", handlers.CancelFriendRequest).Methods("DELETE", "OPTIONS")
+	friendRequests.HandleFunc("/{id}", handlers.UpdateFriendshipStatus).Methods("PATCH", "OPTIONS")
+	friendRequests.HandleFunc("/{id}", handlers.DeleteFriendRequest).Methods("DELETE", "OPTIONS")
 
 	search := s.PathPrefix("/search").Subrouter()
 	search.Use(AuthorizeRequest)

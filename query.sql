@@ -81,7 +81,7 @@ UPDATE monthly_playlists
     WHERE id = $2 AND user_id = $3;
 
 
--- name: CreateFriendRequest :execrows
+-- name: CreateFriendRequest :one
 INSERT INTO friendships (
   user_a_id,
   user_b_id,
@@ -97,16 +97,16 @@ VALUES (
   'pending',
   now(),
   NULL
-);
+)
+RETURNING *;
 
 
 -- name: DeleteFriendRequest :execrows
 DELETE FROM friendships
     WHERE user_a_id = LEAST(@requester_id::uuid, @requestee_id::uuid) AND user_b_id = GREATEST(@requester_id::uuid, @requestee_id::uuid)
-    AND status = 'pending'
-    AND requester_id = @requester_id::uuid;
+    AND status = 'pending';
 
--- name: AcceptFriendRequest :execrows
+-- name: AcceptFriendRequest :one
 UPDATE friendships
     SET
         status = 'accepted',
@@ -115,7 +115,8 @@ UPDATE friendships
         status = 'pending' AND
         user_a_id = LEAST(@responder_id::uuid, @respondee_id::uuid) AND
         user_b_id = GREATEST(@responder_id::uuid, @respondee_id::uuid) AND
-        requester_id <> @responder_id::uuid;
+        requester_id <> @responder_id::uuid
+RETURNING *;
 
 -- name: RemoveFriendship :execrows
 DELETE FROM friendships

@@ -49,7 +49,11 @@ WHERE
     (m.visibility = 'private' AND m.user_id = @searcher_id::uuid));
 
 -- name: GetPlaylist :one
-SELECT * FROM monthly_playlists WHERE id = $1;
+SELECT sqlc.embed(m), sqlc.embed(u)
+FROM monthly_playlists m
+JOIN users u
+  ON u.id = m.user_id
+WHERE m.id= $1;
 
 -- name: GetLatestPrivateKey :one
 SELECT * FROM private_keys

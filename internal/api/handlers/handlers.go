@@ -617,16 +617,16 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user is authorized to view the playlist
-	if playlist.UserID != uuid.MustParse(userID) &&
-		playlist.Visibility != database.PlaylistVisibilityPublic {
+	if playlist.MonthlyPlaylist.ID != uuid.MustParse(userID) &&
+		playlist.MonthlyPlaylist.Visibility != database.PlaylistVisibilityPublic {
 		env.Logger.ErrorContext(ctx, "User not authorized to view playlist")
 		http.Error(w, "User not authorized to view playlist", http.StatusForbidden)
 	}
 
 	// Unmarshal tracks
 	env.Logger.DebugContext(ctx, "Unmarshaling tracks")
-	tracks := make([]map[string]interface{}, len(playlist.Tracks))
-	for i, t := range playlist.Tracks {
+	tracks := make([]map[string]interface{}, len(playlist.MonthlyPlaylist.Tracks))
+	for i, t := range playlist.MonthlyPlaylist.Tracks {
 		track := make(map[string]interface{})
 		err = json.Unmarshal(t, &track)
 		if err != nil {
@@ -637,9 +637,18 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 		tracks[i] = track
 	}
 
+	// Unmarshal spotify user data
+	env.Logger.DebugContext(ctx, "Unmarshaling spotify user data")
+	var spotifyUserData spotifyModels.User
+	if err := json.Unmarshal(playlist.User.SpotifyUserData, &spotifyUserData); err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify user data", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
 	// Encoding response
 	env.Logger.DebugContext(ctx, "Encoding response")
-	playlistMonth, err := models.GetMonth(int(playlist.Month))
+	playlistMonth, err := models.GetMonth(int(playlist.MonthlyPlaylist.Month))
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid month", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -647,14 +656,17 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Add("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(responses.GetPlaylist{
-		ID:         playlist.ID,
-		UserID:     playlist.UserID,
-		Tracks:     tracks,
-		Year:       int(playlist.Year),
-		Month:      playlistMonth,
-		Name:       playlist.Name,
-		CreatedAt:  playlist.CreatedAt.Time,
-		Visibility: playlist.Visibility,
+		Playlist: responses.MonthlyPlaylist{
+			ID:         playlist.MonthlyPlaylist.ID,
+			UserID:     playlist.MonthlyPlaylist.UserID,
+			Tracks:     tracks,
+			Year:       int(playlist.MonthlyPlaylist.Year),
+			Month:      playlistMonth,
+			Name:       playlist.MonthlyPlaylist.Name,
+			CreatedAt:  playlist.MonthlyPlaylist.CreatedAt.Time,
+			Visibility: playlist.MonthlyPlaylist.Visibility,
+		},
+		User: buildPublicUser(playlist.User, spotifyUserData),
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))

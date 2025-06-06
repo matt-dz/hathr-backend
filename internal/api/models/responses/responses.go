@@ -39,14 +39,8 @@ type GetUserPlaylists struct {
 }
 
 type GetPlaylist struct {
-	ID         uuid.UUID                   `json:"id"`
-	UserID     uuid.UUID                   `json:"user_id"`
-	Tracks     []map[string]interface{}    `json:"tracks"`
-	Year       int                         `json:"year"`
-	Month      models.Month                `json:"month"`
-	Name       string                      `json:"name"`
-	CreatedAt  time.Time                   `json:"created_at"`
-	Visibility database.PlaylistVisibility `json:"visibility"`
+	Playlist MonthlyPlaylist   `json:"playlist" validate:"required"`
+	User     models.PublicUser `json:"user" validate:"required"`
 }
 
 type ListFriends struct {

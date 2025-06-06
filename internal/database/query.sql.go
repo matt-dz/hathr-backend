@@ -232,21 +232,41 @@ func (q *Queries) GetPersonalProfile(ctx context.Context, id uuid.UUID) (User, e
 }
 
 const getPlaylist = `-- name: GetPlaylist :one
-SELECT id, user_id, tracks, year, month, name, created_at, visibility FROM monthly_playlists WHERE id = $1
+SELECT m.id, m.user_id, m.tracks, m.year, m.month, m.name, m.created_at, m.visibility, u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+FROM monthly_playlists m
+JOIN users u
+  ON u.id = m.user_id
+WHERE m.id= $1
 `
 
-func (q *Queries) GetPlaylist(ctx context.Context, id uuid.UUID) (MonthlyPlaylist, error) {
+type GetPlaylistRow struct {
+	MonthlyPlaylist MonthlyPlaylist `json:"monthly_playlist"`
+	User            User            `json:"user"`
+}
+
+func (q *Queries) GetPlaylist(ctx context.Context, id uuid.UUID) (GetPlaylistRow, error) {
 	row := q.db.QueryRow(ctx, getPlaylist, id)
-	var i MonthlyPlaylist
+	var i GetPlaylistRow
 	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.Tracks,
-		&i.Year,
-		&i.Month,
-		&i.Name,
-		&i.CreatedAt,
-		&i.Visibility,
+		&i.MonthlyPlaylist.ID,
+		&i.MonthlyPlaylist.UserID,
+		&i.MonthlyPlaylist.Tracks,
+		&i.MonthlyPlaylist.Year,
+		&i.MonthlyPlaylist.Month,
+		&i.MonthlyPlaylist.Name,
+		&i.MonthlyPlaylist.CreatedAt,
+		&i.MonthlyPlaylist.Visibility,
+		&i.User.ID,
+		&i.User.DisplayName,
+		&i.User.Username,
+		&i.User.Email,
+		&i.User.RegisteredAt,
+		&i.User.Role,
+		&i.User.SpotifyUserID,
+		&i.User.SpotifyUserData,
+		&i.User.CreatedAt,
+		&i.User.RefreshToken,
+		&i.User.RefreshExpiresAt,
 	)
 	return i, err
 }

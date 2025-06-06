@@ -565,7 +565,6 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to encode user playlists", http.StatusInternalServerError)
 		return
 	}
-
 }
 
 func GetPlaylist(w http.ResponseWriter, r *http.Request) {
@@ -1269,6 +1268,163 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode search response", slog.Any("error", err))
 		http.Error(w, "Failed to encode search response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Search for user
+	env.Logger.DebugContext(ctx, "Searching for user in DB")
+	dbUser, err := env.Database.GetPersonalProfile(ctx, uuid.MustParse(userID))
+
+	// something crazy has happened
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.ErrorContext(ctx, "User not found", slog.Any("error", err))
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		env.ErrorContext(ctx, "Failed to retrieve user", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Unmarshal spotify data
+	user := models.User{
+		ID:           dbUser.ID,
+		DisplayName:  dbUser.DisplayName.String,
+		Username:     dbUser.Username.String,
+		Email:        dbUser.Email,
+		RegisteredAt: dbUser.RegisteredAt.Time,
+		Role:         string(dbUser.Role),
+
+		SpotifyUserID: dbUser.SpotifyUserID,
+		CreatedAt:     dbUser.CreatedAt.Time,
+	}
+	env.Logger.DebugContext(ctx, "Unmarshaling spotify data")
+	err = json.Unmarshal(dbUser.SpotifyUserData, &user.SpotifyUserData)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify data", slog.Any("error", err))
+		http.Error(w, "Unable to unmarshal user data", http.StatusInternalServerError)
+		return
+	}
+
+	// Encode response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(user)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode user response", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+}
+
+func GetUserByID(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	searcherID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+	userID := mux.Vars(r)["user_id"]
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if err := uuid.Validate(searcherID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID in route parameter", slog.Any("error", err))
+		http.Error(w, "Invalid user ID in route parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Search for user
+	env.Logger.DebugContext(ctx, "Searching for user in DB")
+	dbUser, err := env.Database.GetUserById(ctx, database.GetUserByIdParams{
+		Searcher: uuid.MustParse(searcherID),
+		Searchee: uuid.MustParse(userID),
+	})
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.ErrorContext(ctx, "User not found", slog.Any("error", err))
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		env.ErrorContext(ctx, "Failed to retrieve user", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Unmarshal spotify data
+	user := models.PublicUser{
+		ID:          dbUser.ID,
+		DisplayName: dbUser.DisplayName.String,
+		Username:    dbUser.Username.String,
+		CreatedAt:   dbUser.CreatedAt.Time,
+	}
+	env.Logger.DebugContext(ctx, "Unmarshaling spotify data")
+	err = json.Unmarshal(dbUser.SpotifyUserData, &user.SpotifyUserData)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify data", slog.Any("error", err))
+		http.Error(w, "Unable to unmarshal user data", http.StatusInternalServerError)
+		return
+	}
+
+	// Encode response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(user)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode user response", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 }

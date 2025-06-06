@@ -42,10 +42,10 @@ func (m Month) Index() int {
 }
 
 func GetMonth(m int) (Month, error) {
-	if m < 0 || m >= len(months) {
-		return Month(""), fmt.Errorf("Month must be >= 0 and < 12. Received : %d", m)
+	if m <= 0 || m > len(months) {
+		return Month(""), fmt.Errorf("Month must be >= 1 and < 12. Received : %d", m)
 	}
-	return months[m], nil
+	return months[m-1], nil
 }
 
 type MonthlyPlaylist struct {
@@ -69,4 +69,17 @@ type PublicUser struct {
 type FriendRequest struct {
 	Friendship database.Friendship `json:"friendship"`
 	User       PublicUser          `json:"user"`
+}
+
+type User struct {
+	ID           uuid.UUID `json:"id"`
+	DisplayName  string    `json:"display_name"`
+	Username     string    `json:"username"`
+	Email        string    `json:"email"`
+	RegisteredAt time.Time `json:"registered_at"`
+	Role         string    `json:"role"`
+
+	SpotifyUserID   string                   `json:"spotify_user_id"`
+	SpotifyUserData spotifyModels.PublicUser `json:"spotify_user_data"`
+	CreatedAt       time.Time                `json:"created_at"`
 }

@@ -14,7 +14,6 @@ SET username = $1, display_name = $2, registered_at = now()
 WHERE id = $3
 RETURNING *;
 
-
 -- name: SearchUsers :many
 SELECT
     sqlc.embed(u),
@@ -170,3 +169,16 @@ ON (u.id = CASE
 WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
 AND f.requester_id <> $1
 AND f.status = 'pending';
+
+-- name: GetUserById :one
+SELECT u.*
+FROM users u
+LEFT JOIN friendships f
+    ON (
+    f.user_a_id = LEAST(@searcher::uuid, u.id) AND f.user_b_id = GREATEST(@searcher::uuid, u.id)
+    )
+WHERE u.id = @searchee::uuid AND
+      (f.status IS NULL OR f.status <> 'blocked');
+
+-- name: GetPersonalProfile :one
+SELECT * FROM users WHERE id = $1;

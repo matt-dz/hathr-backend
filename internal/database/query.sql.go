@@ -175,6 +175,29 @@ func (q *Queries) GetLatestPrivateKey(ctx context.Context) (PrivateKey, error) {
 	return i, err
 }
 
+const getPersonalProfile = `-- name: GetPersonalProfile :one
+SELECT id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE id = $1
+`
+
+func (q *Queries) GetPersonalProfile(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, getPersonalProfile, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Username,
+		&i.Email,
+		&i.RegisteredAt,
+		&i.Role,
+		&i.SpotifyUserID,
+		&i.SpotifyUserData,
+		&i.CreatedAt,
+		&i.RefreshToken,
+		&i.RefreshExpiresAt,
+	)
+	return i, err
+}
+
 const getPlaylist = `-- name: GetPlaylist :one
 SELECT id, user_id, tracks, year, month, name, created_at, visibility FROM monthly_playlists WHERE id = $1
 `
@@ -204,6 +227,41 @@ func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) 
 	var value string
 	err := row.Scan(&value)
 	return value, err
+}
+
+const getUserById = `-- name: GetUserById :one
+SELECT u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+FROM users u
+LEFT JOIN friendships f
+    ON (
+    f.user_a_id = LEAST($1::uuid, u.id) AND f.user_b_id = GREATEST($1::uuid, u.id)
+    )
+WHERE u.id = $2::uuid AND
+      (f.status IS NULL OR f.status <> 'blocked')
+`
+
+type GetUserByIdParams struct {
+	Searcher uuid.UUID `json:"searcher"`
+	Searchee uuid.UUID `json:"searchee"`
+}
+
+func (q *Queries) GetUserById(ctx context.Context, arg GetUserByIdParams) (User, error) {
+	row := q.db.QueryRow(ctx, getUserById, arg.Searcher, arg.Searchee)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Username,
+		&i.Email,
+		&i.RegisteredAt,
+		&i.Role,
+		&i.SpotifyUserID,
+		&i.SpotifyUserData,
+		&i.CreatedAt,
+		&i.RefreshToken,
+		&i.RefreshExpiresAt,
+	)
+	return i, err
 }
 
 const getUserBySpotifyId = `-- name: GetUserBySpotifyId :one

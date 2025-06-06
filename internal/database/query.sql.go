@@ -175,6 +175,39 @@ func (q *Queries) GetLatestPrivateKey(ctx context.Context) (PrivateKey, error) {
 	return i, err
 }
 
+const getPersonalPlaylists = `-- name: GetPersonalPlaylists :many
+SELECT id, user_id, tracks, year, month, name, created_at, visibility FROM monthly_playlists WHERE user_id = $1
+`
+
+func (q *Queries) GetPersonalPlaylists(ctx context.Context, userID uuid.UUID) ([]MonthlyPlaylist, error) {
+	rows, err := q.db.Query(ctx, getPersonalPlaylists, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MonthlyPlaylist
+	for rows.Next() {
+		var i MonthlyPlaylist
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Tracks,
+			&i.Year,
+			&i.Month,
+			&i.Name,
+			&i.CreatedAt,
+			&i.Visibility,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPersonalProfile = `-- name: GetPersonalProfile :one
 SELECT id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE id = $1
 `
@@ -311,11 +344,24 @@ func (q *Queries) GetUserFromSession(ctx context.Context, refreshToken uuid.UUID
 }
 
 const getUserPlaylists = `-- name: GetUserPlaylists :many
-SELECT id, user_id, tracks, year, month, name, created_at, visibility FROM monthly_playlists WHERE user_id = $1
+SELECT m.id, m.user_id, m.tracks, m.year, m.month, m.name, m.created_at, m.visibility
+FROM monthly_playlists m
+LEFT JOIN friendships f
+  ON (f.user_a_id = LEAST($1::uuid, m.user_id) AND f.user_b_id = GREATEST($1::uuid, m.user_id))
+WHERE
+    m.user_id = $2::uuid AND
+    (f.status IS NULL OR f.status <> 'blocked') AND
+    (m.visibility = 'public' OR
+    (m.visibility = 'private' AND m.user_id = $1::uuid))
 `
 
-func (q *Queries) GetUserPlaylists(ctx context.Context, userID uuid.UUID) ([]MonthlyPlaylist, error) {
-	rows, err := q.db.Query(ctx, getUserPlaylists, userID)
+type GetUserPlaylistsParams struct {
+	SearcherID uuid.UUID `json:"searcher_id"`
+	UserID     uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsParams) ([]MonthlyPlaylist, error) {
+	rows, err := q.db.Query(ctx, getUserPlaylists, arg.SearcherID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}

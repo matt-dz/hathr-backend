@@ -34,8 +34,19 @@ INSERT INTO monthly_playlists(user_id, tracks, year, month, name)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING id;
 
--- name: GetUserPlaylists :many
+-- name: GetPersonalPlaylists :many
 SELECT * FROM monthly_playlists WHERE user_id = $1;
+
+-- name: GetUserPlaylists :many
+SELECT m.*
+FROM monthly_playlists m
+LEFT JOIN friendships f
+  ON (f.user_a_id = LEAST(@searcher_id::uuid, m.user_id) AND f.user_b_id = GREATEST(@searcher_id::uuid, m.user_id))
+WHERE
+    m.user_id = @user_id::uuid AND
+    (f.status IS NULL OR f.status <> 'blocked') AND
+    (m.visibility = 'public' OR
+    (m.visibility = 'private' AND m.user_id = @searcher_id::uuid));
 
 -- name: GetPlaylist :one
 SELECT * FROM monthly_playlists WHERE id = $1;
@@ -131,7 +142,6 @@ JOIN users u
     END)
 WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
   AND f.status = 'accepted';
-
 
 -- name: ListRequests :many
 SELECT

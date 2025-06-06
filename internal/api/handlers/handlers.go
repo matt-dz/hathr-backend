@@ -487,7 +487,7 @@ func CreateMonthlyPlaylist(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
+func GetPersonalPlaylists(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
 	if !ok {
@@ -509,7 +509,7 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 	}
 
 	env.Logger.DebugContext(ctx, "Getting user playlists")
-	dbPlaylists, err := env.Database.GetUserPlaylists(ctx, uuid.MustParse(userID))
+	dbPlaylists, err := env.Database.GetPersonalPlaylists(ctx, uuid.MustParse(userID))
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user playlists", slog.Any("error", err))
 		http.Error(w, "Failed to get user playlists", http.StatusInternalServerError)
@@ -625,16 +625,16 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 
 	// Unmarshal tracks
 	env.Logger.DebugContext(ctx, "Unmarshaling tracks")
-	var tracks []map[string]interface{}
-	for _, t := range playlist.Tracks {
-		var track map[string]interface{}
+	tracks := make([]map[string]interface{}, len(playlist.Tracks))
+	for i, t := range playlist.Tracks {
+		track := make(map[string]interface{})
 		err = json.Unmarshal(t, &track)
 		if err != nil {
 			env.Logger.ErrorContext(ctx, "Unable to unmarshal track", slog.Any("error", err))
 			http.Error(w, "Unable to unmarshal track", http.StatusInternalServerError)
 			return
 		}
-		tracks = append(tracks, track)
+		tracks[i] = track
 	}
 
 	// Encoding response
@@ -648,6 +648,7 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(responses.GetPlaylist{
 		ID:         playlist.ID,
+		UserID:     playlist.UserID,
 		Tracks:     tracks,
 		Year:       int(playlist.Year),
 		Month:      playlistMonth,
@@ -1427,4 +1428,157 @@ func GetUserByID(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+}
+
+func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Get parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	searcherID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+	userID := mux.Vars(r)["user_id"]
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if err := uuid.Validate(searcherID); err != nil {
+		env.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(userID); err != nil {
+		env.ErrorContext(ctx, "Invalid user ID in route parameter", slog.Any("error", err))
+		http.Error(w, "Invalid user ID in route parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Retrieve playlists from DB
+	env.Logger.DebugContext(ctx, "Retrieving playlists from DB")
+	dbPlaylists, err := env.Database.GetUserPlaylists(ctx, database.GetUserPlaylistsParams{
+		SearcherID: uuid.MustParse(searcherID),
+		UserID:     uuid.MustParse(userID),
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user playlists", slog.Any("error", err))
+		http.Error(w, "Failed to get user playlists", http.StatusInternalServerError)
+		return
+	}
+
+	// Decode tracks
+	env.Logger.DebugContext(ctx, "Decoding tracks")
+	playlists := responses.GetUserPlaylists{
+		Playlists: make([]responses.MonthlyPlaylist, 0),
+	}
+	for _, playlist := range dbPlaylists {
+		// Unmarshal each track
+		tracks := make([]map[string]interface{}, 0)
+		for j, t := range playlist.Tracks {
+			var track map[string]interface{}
+			env.Logger.DebugContext(ctx, "Unarmashaling track", slog.Int("no.", j))
+			err := json.Unmarshal(t, &track)
+			if err != nil {
+				env.Logger.ErrorContext(ctx, "Unable to unmarshal track", slog.Any("error", err))
+				http.Error(w, "Unable to unmarshal track", http.StatusInternalServerError)
+				return
+			}
+			tracks = append(tracks, track)
+		}
+
+		month, err := models.GetMonth(int(playlist.Month))
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Invalid month", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		playlists.Playlists = append(playlists.Playlists, responses.MonthlyPlaylist{
+			ID:         playlist.ID,
+			UserID:     playlist.UserID,
+			Year:       int(playlist.Year),
+			Month:      month,
+			Name:       playlist.Name,
+			CreatedAt:  playlist.CreatedAt.Time,
+			Visibility: playlist.Visibility,
+			Tracks:     tracks,
+		})
+		env.Logger.DebugContext(ctx, "Unmarshaled tracks")
+	}
+
+	// Serialize playlists to JSON
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(playlists)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode user playlists", slog.Any("error", err))
+		http.Error(w, "Failed to encode user playlists", http.StatusInternalServerError)
+		return
+	}
+}
+
+func GetUserFriends(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	userID := mux.Vars(r)["user_id"]
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// List friends
+	env.Logger.DebugContext(ctx, "Listing friends from DB")
+	friends, err := env.Database.ListFriends(ctx, uuid.MustParse(userID))
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to list friends", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Process friends data
+	env.Logger.DebugContext(ctx, "Processing friends data")
+	responseFriends := make([]models.PublicUser, len(friends))
+	for i, f := range friends {
+		var spotifyUserData spotifyModels.User
+		if err := json.Unmarshal(f.SpotifyUserData, &spotifyUserData); err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify user data", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		responseFriends[i] = buildPublicUser(f, spotifyUserData)
+	}
+
+	// Encode response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	err = json.NewEncoder(w).Encode(responses.ListFriends{
+		Friends: responseFriends,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode friends response", slog.Any("error", err))
+		http.Error(w, "Failed to encode friends response", http.StatusInternalServerError)
+		return
+	}
+
 }

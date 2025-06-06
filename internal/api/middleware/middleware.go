@@ -252,19 +252,19 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	s.HandleFunc("/login/spotify", handlers.SpotifyLogin).Methods("POST", "OPTIONS")
 	s.HandleFunc("/refresh", handlers.RefreshSession).Methods("POST", "OPTIONS")
 
-	profile := s.PathPrefix("/me/profile").Subrouter()
-	profile.Use(AuthorizeRequest)
-	profile.HandleFunc("", handlers.GetPersonalProfile).Methods("GET", "OPTIONS")
+	me := s.PathPrefix("/me").Subrouter()
+	me.Use(AuthorizeRequest)
+	me.HandleFunc("/profile", handlers.GetPersonalProfile).Methods("GET", "OPTIONS")
+	me.HandleFunc("/playlists", handlers.GetPersonalPlaylists).Methods("GET", "OPTIONS")
 
 	signup := s.PathPrefix("/complete-signup").Subrouter()
 	signup.Use(AuthorizeRequest)
 	signup.HandleFunc("", handlers.CompleteSignup).Methods("POST", "OPTIONS")
 
-	playlists := s.PathPrefix("/me/playlists").Subrouter()
+	playlists := s.PathPrefix("/playlists").Subrouter()
 	playlists.Use(AuthorizeRequest)
-	playlists.HandleFunc("", handlers.GetUserPlaylists).Methods("GET", "OPTIONS")
 	playlists.HandleFunc("/{id}", handlers.GetPlaylist).Methods("GET", "OPTIONS")
-	playlists.HandleFunc("/visibility/{id}", handlers.UpdateVisibility).Methods("PUT", "OPTIONS")
+	playlists.HandleFunc("/{id}", handlers.UpdateVisibility).Methods("PATCH", "OPTIONS")
 
 	playlist := s.PathPrefix("/playlist").Subrouter()
 	playlist.Use(AuthorizeRequest)
@@ -290,5 +290,6 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	users := s.PathPrefix("/users").Subrouter()
 	users.Use(AuthorizeRequest)
 	users.HandleFunc("/{user_id}", handlers.GetUserByID).Methods("GET", "OPTIONS")
-
+	users.HandleFunc("/{user_id}/playlists", handlers.GetUserPlaylists).Methods("GET", "OPTIONS")
+	users.HandleFunc("/{user_id}/friends", handlers.GetUserFriends).Methods("GET", "OPTIONS")
 }

@@ -57,18 +57,39 @@ CREATE TYPE playlist_visibility
 AS
 ENUM('public', 'friends', 'private');
 
-CREATE TABLE monthly_playlists (
+CREATE TYPE playlist_type AS ENUM(
+    'weekly',
+    'monthly'
+);
+
+CREATE TABLE playlists (
     id UUID DEFAULT gen_random_uuid (),
     user_id UUID,
     tracks JSONB[] NOT NULL,
-    year SMALLINT NOT NULL,
-    month SMALLINT NOT NULL CHECK (month BETWEEN 1 and 12),
+    type playlist_type NOT NULL,
     name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now (),
     visibility playlist_visibility NOT NULL DEFAULT 'public',
+
+    year INTEGER NOT NULL,
+    week INTEGER,
+    month INTEGER,
+
+    CONSTRAINT valid_playlist CHECK (
+        CASE
+          WHEN type = 'weekly'  THEN week IS NOT NULL
+                                  AND week BETWEEN 1 AND 52
+                                  AND month IS NULL
+          WHEN type = 'monthly' THEN month IS NOT NULL
+                                  AND month BETWEEN 1 AND 12
+                                  AND week IS NULL
+          ELSE true
+        END
+    ),
+
     PRIMARY KEY (id),
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-    UNIQUE (user_id, year, month)
+    UNIQUE (user_id, type, year, week, month)
 );
 
 

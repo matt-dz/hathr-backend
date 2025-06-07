@@ -30,30 +30,30 @@ ORDER BY similarity(u.username, @username::text) DESC
 LIMIT 10;
 
 -- name: CreateMonthlyPlaylist :one
-INSERT INTO monthly_playlists(user_id, tracks, year, month, name)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO playlists(user_id, tracks, year, month, name, type)
+VALUES ($1, $2, $3, $4, $5, 'monthly')
 RETURNING id;
 
 -- name: GetPersonalPlaylists :many
-SELECT * FROM monthly_playlists WHERE user_id = $1;
+SELECT * FROM playlists WHERE user_id = $1;
 
 -- name: GetUserPlaylists :many
-SELECT m.*
-FROM monthly_playlists m
+SELECT p.*
+FROM playlists p
 LEFT JOIN friendships f
-  ON (f.user_a_id = LEAST(@searcher_id::uuid, m.user_id) AND f.user_b_id = GREATEST(@searcher_id::uuid, m.user_id))
+  ON (f.user_a_id = LEAST(@searcher_id::uuid, p.user_id) AND f.user_b_id = GREATEST(@searcher_id::uuid, p.user_id))
 WHERE
-    m.user_id = @user_id::uuid AND
+    p.user_id = @user_id::uuid AND
     (f.status IS NULL OR f.status <> 'blocked') AND
-    (m.visibility = 'public' OR
-    (m.visibility = 'private' AND m.user_id = @searcher_id::uuid));
+    (p.visibility = 'public' OR
+    (p.visibility = 'private' AND p.user_id = @searcher_id::uuid));
 
 -- name: GetPlaylist :one
-SELECT sqlc.embed(m), sqlc.embed(u)
-FROM monthly_playlists m
+SELECT sqlc.embed(p), sqlc.embed(u)
+FROM playlists p
 JOIN users u
-  ON u.id = m.user_id
-WHERE m.id= $1;
+  ON u.id = p.user_id
+WHERE p.id= $1;
 
 -- name: GetLatestPrivateKey :one
 SELECT * FROM private_keys
@@ -90,7 +90,7 @@ SELECT * FROM users WHERE refresh_token = $1;
 
 
 -- name: UpdateVisibility :execrows
-UPDATE monthly_playlists
+UPDATE playlists
     SET visibility = $1
     WHERE id = $2 AND user_id = $3;
 

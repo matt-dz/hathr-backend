@@ -254,8 +254,8 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 
 	me := s.PathPrefix("/me").Subrouter()
 	me.Use(AuthorizeRequest)
-	me.HandleFunc("/profile", handlers.GetPersonalProfile).Methods("GET", "OPTIONS")
 	me.HandleFunc("/playlists", handlers.GetPersonalPlaylists).Methods("GET", "OPTIONS")
+	me.HandleFunc("", handlers.GetPersonalProfile).Methods("GET", "OPTIONS")
 	me.HandleFunc("", handlers.UpdatePersonalProfile).Methods("PATCH", "OPTIONS")
 
 	signup := s.PathPrefix("/complete-signup").Subrouter()

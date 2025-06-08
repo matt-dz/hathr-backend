@@ -833,6 +833,47 @@ func (q *Queries) SignUpUser(ctx context.Context, arg SignUpUserParams) (User, e
 	return i, err
 }
 
+const updateUserProfile = `-- name: UpdateUserProfile :one
+UPDATE users
+SET
+  username = COALESCE($1, username),
+  display_name = COALESCE($2, display_name),
+  email = COALESCE($4, email)
+WHERE id = $3
+RETURNING id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
+`
+
+type UpdateUserProfileParams struct {
+	Username    pgtype.Text `json:"username"`
+	DisplayName pgtype.Text `json:"display_name"`
+	ID          uuid.UUID   `json:"id"`
+	Email       pgtype.Text `json:"email"`
+}
+
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserProfile,
+		arg.Username,
+		arg.DisplayName,
+		arg.ID,
+		arg.Email,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Username,
+		&i.Email,
+		&i.RegisteredAt,
+		&i.Role,
+		&i.SpotifyUserID,
+		&i.SpotifyUserData,
+		&i.CreatedAt,
+		&i.RefreshToken,
+		&i.RefreshExpiresAt,
+	)
+	return i, err
+}
+
 const updateVisibility = `-- name: UpdateVisibility :execrows
 UPDATE playlists
     SET visibility = $1

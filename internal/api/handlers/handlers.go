@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"os"
 	"regexp"
@@ -35,7 +36,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const usernameRegex = `^[a-zA-Z0-9_.]{1,20}$`
+var usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_.]{1,20}$`)
+var displayNameRegex = regexp.MustCompile(`^.{1,50}$`)
 
 func buildSpotifyPublicUser(spotifyUserData spotifyModels.User) spotifyModels.PublicUser {
 	return spotifyModels.PublicUser{
@@ -58,6 +60,23 @@ func buildPublicUser(user database.User) (models.PublicUser, error) {
 		ID:              user.ID,
 		CreatedAt:       user.CreatedAt.Time,
 		Username:        user.Username.String,
+		DisplayName:     user.DisplayName.String,
+		SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
+	}, nil
+}
+
+func buildUserProfile(user database.User) (models.UserProfile, error) {
+	var response models.UserProfile
+	var spotifyUserData spotifyModels.User
+	if err := json.Unmarshal(user.SpotifyUserData, &spotifyUserData); err != nil {
+		return response, err
+	}
+
+	return models.UserProfile{
+		ID:              user.ID,
+		CreatedAt:       user.CreatedAt.Time,
+		Username:        user.Username.String,
+		Email:           user.Email,
 		DisplayName:     user.DisplayName.String,
 		SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
 	}, nil
@@ -168,6 +187,13 @@ func buildPlaylist(playlist database.Playlist, env *hathrEnv.Env, ctx context.Co
 	return res, nil
 }
 
+func writeErrorResponse(w *http.ResponseWriter, ctx context.Context, env *hathrEnv.Env, statusCode int, message string) {
+	http.Error(*w, http.StatusText(statusCode), statusCode)
+	if _, err := (*w).Write([]byte(message)); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to write error response", slog.Any("error", err))
+	}
+}
+
 func ServeSpotifyOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
@@ -201,7 +227,10 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 	err := hathrJson.DecodeJson(&loginRequest, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to write error response", slog.Any("error", err))
+		}
 		return
 	}
 
@@ -334,7 +363,10 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 	err := hathrJson.DecodeJson(&signupRequest, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to write error response", slog.Any("error", err))
+		}
 		return
 	}
 
@@ -360,13 +392,7 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
-	match, err := regexp.MatchString(usernameRegex, signupRequest.Username)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to validate username regex", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	if !match {
+	if match := usernameRegex.MatchString(signupRequest.Username); !match {
 		env.Logger.ErrorContext(ctx, "Invalid username", slog.String("username", signupRequest.Username))
 		http.Error(w, "Invalid username", http.StatusBadRequest)
 		return
@@ -379,7 +405,6 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update username in the database
-	var pgErr *pgconn.PgError
 	env.Logger.DebugContext(ctx, "Updating user in database")
 	dbUser, err := env.Database.SignUpUser(ctx, database.SignUpUserParams{
 		Username: pgtype.Text{
@@ -392,6 +417,7 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 		},
 		ID: uuid.MustParse(userID),
 	})
+	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
 		env.Logger.ErrorContext(ctx, "Username taken", slog.Any("error", err))
 		http.Error(w, "Username taken", http.StatusConflict)
@@ -461,7 +487,10 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 	err := hathrJson.DecodeJson(&refreshRequest, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to write error response", slog.Any("error", err))
+		}
 		return
 	}
 
@@ -703,7 +732,10 @@ func UpdateVisibility(w http.ResponseWriter, r *http.Request) {
 	err = hathrJson.DecodeJson(&req, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to write error response", slog.Any("error", err))
+		}
 		return
 	}
 
@@ -999,7 +1031,10 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 	err = hathrJson.DecodeJson(&friendRequest, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to write error response", slog.Any("error", err))
+		}
 		return
 	}
 
@@ -1017,13 +1052,13 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Creating friend request in the database
-	var pgErr *pgconn.PgError
 	env.Logger.DebugContext(ctx, "Creating friend request in DB")
 	friendship, err := env.Database.CreateFriendRequest(ctx, database.CreateFriendRequestParams{
 		Requester: uuid.MustParse(userID),
 		Requestee: friendRequest.UserID,
 	})
 
+	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		// foreign_key_violation - this is reached if the user tries to befriend a user that does not exist
 		if pgErr.Code == "23503" {
@@ -1140,7 +1175,10 @@ func UpdateFriendshipStatus(w http.ResponseWriter, r *http.Request) {
 	err = hathrJson.DecodeJson(&friendRequest, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to write error response", slog.Any("error", err))
+		}
 		return
 	}
 
@@ -1650,6 +1688,117 @@ func GetFriendsPlaylists(w http.ResponseWriter, r *http.Request) {
 	err = json.NewEncoder(w).Encode(responses.GetFriendPlaylists{Playlists: response})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode friend playlists response", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+}
+
+func UpdatePersonalProfile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		return
+	}
+	var requestBody requests.UpdateUserProfile
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := hathrJson.DecodeJson(&requestBody, decoder); err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	if requestBody.DisplayName == nil && requestBody.Username == nil && requestBody.Email == nil {
+		env.Logger.ErrorContext(ctx, "No fields to update")
+		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Must specify a field to update")
+		return
+	}
+	if requestBody.Username != nil && !usernameRegex.MatchString(*requestBody.Username) {
+		env.Logger.ErrorContext(ctx, "Invalid username", slog.String("username", *requestBody.Username))
+		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid username")
+		return
+	}
+	if requestBody.DisplayName != nil && !displayNameRegex.MatchString(*requestBody.DisplayName) {
+		env.Logger.ErrorContext(ctx, "Invalid display name", slog.String("display_name", *requestBody.DisplayName))
+		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid display name")
+		return
+	}
+	if requestBody.Email != nil {
+		if _, err := mail.ParseAddress(*requestBody.Email); err != nil {
+			env.Logger.ErrorContext(ctx, "Invalid email address", slog.String("email", *requestBody.Email))
+			writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid email address")
+			return
+		}
+	}
+
+	// Update user profile
+	env.Logger.DebugContext(ctx, "Updating user profile in DB")
+	params := database.UpdateUserProfileParams{}
+	params.DisplayName.Valid = requestBody.DisplayName != nil
+	if requestBody.DisplayName != nil {
+		params.DisplayName.String = *requestBody.DisplayName
+	}
+	params.Username.Valid = requestBody.Username != nil
+	if requestBody.Username != nil {
+		params.Username.String = *requestBody.Username
+	}
+	params.Email.Valid = requestBody.Email != nil
+	if requestBody.Email != nil {
+		params.Email.String = *requestBody.Email
+	}
+	params.ID = uuid.MustParse(userID)
+	res, err := env.Database.UpdateUserProfile(ctx, params)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		env.ErrorContext(ctx, "Username already taken", slog.Any("error", err))
+		writeErrorResponse(&w, ctx, env, http.StatusConflict, "Username unavailable")
+		return
+	} else if errors.Is(err, pgx.ErrNoRows) {
+		env.ErrorContext(ctx, "User not found")
+		writeErrorResponse(&w, ctx, env, http.StatusConflict, "User not found")
+		return
+	} else if err != nil {
+		env.ErrorContext(ctx, "Failed to update user profile", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Build response
+	env.Logger.DebugContext(ctx, "Building response")
+	user, err := buildUserProfile(res)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to build user", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Encode response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode user response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}

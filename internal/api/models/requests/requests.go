@@ -48,3 +48,9 @@ type UpdateFriendshipStatus struct {
 type CompleteSignup struct {
 	Username string `json:"username" validate:"required"`
 }
+
+type UpdateUserProfile struct {
+	Username    *string `json:"username"`
+	Email       *string `json:"email"`
+	DisplayName *string `json:"display_name"`
+}

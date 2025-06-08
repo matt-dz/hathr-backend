@@ -229,3 +229,12 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) p ON true
 ORDER BY u.username;
+
+-- name: UpdateUserProfile :one
+UPDATE users
+SET
+  username = COALESCE($1, username),
+  display_name = COALESCE($2, display_name),
+  email = COALESCE(sqlc.narg('email'), email)
+WHERE id = $3
+RETURNING *;

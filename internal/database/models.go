@@ -221,6 +221,7 @@ type User struct {
 	ID               uuid.UUID        `json:"id"`
 	DisplayName      pgtype.Text      `json:"display_name"`
 	Username         pgtype.Text      `json:"username"`
+	ImageUrl         pgtype.Text      `json:"image_url"`
 	Email            string           `json:"email"`
 	RegisteredAt     pgtype.Timestamp `json:"registered_at"`
 	Role             Role             `json:"role"`

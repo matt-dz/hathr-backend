@@ -115,7 +115,7 @@ INSERT INTO users (spotify_user_id, email, spotify_user_data)
 VALUES ($1, $2, $3)
 ON CONFLICT (spotify_user_id) DO UPDATE
 SET email = users.email -- no op
-RETURNING id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
+RETURNING id, display_name, username, image_url, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
 `
 
 type CreateSpotifyUserParams struct {
@@ -131,6 +131,7 @@ func (q *Queries) CreateSpotifyUser(ctx context.Context, arg CreateSpotifyUserPa
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
+		&i.ImageUrl,
 		&i.Email,
 		&i.RegisteredAt,
 		&i.Role,
@@ -174,7 +175,7 @@ WITH friends AS (
     AND (f.user_a_id = $1 OR f.user_b_id = $1)
 )
 SELECT
-    u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
+    u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
     p.id AS playlist_id,
     p.type AS playlist_type,
     p.name AS playlist_name,
@@ -221,6 +222,7 @@ func (q *Queries) GetFriendPlaylists(ctx context.Context, userAID uuid.UUID) ([]
 			&i.User.ID,
 			&i.User.DisplayName,
 			&i.User.Username,
+			&i.User.ImageUrl,
 			&i.User.Email,
 			&i.User.RegisteredAt,
 			&i.User.Role,
@@ -297,7 +299,7 @@ func (q *Queries) GetPersonalPlaylists(ctx context.Context, userID uuid.UUID) ([
 }
 
 const getPersonalProfile = `-- name: GetPersonalProfile :one
-SELECT id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE id = $1
+SELECT id, display_name, username, image_url, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetPersonalProfile(ctx context.Context, id uuid.UUID) (User, error) {
@@ -307,6 +309,7 @@ func (q *Queries) GetPersonalProfile(ctx context.Context, id uuid.UUID) (User, e
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
+		&i.ImageUrl,
 		&i.Email,
 		&i.RegisteredAt,
 		&i.Role,
@@ -320,7 +323,7 @@ func (q *Queries) GetPersonalProfile(ctx context.Context, id uuid.UUID) (User, e
 }
 
 const getPlaylist = `-- name: GetPlaylist :one
-SELECT p.id, p.user_id, p.tracks, p.type, p.name, p.created_at, p.visibility, p.year, p.week, p.month, u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+SELECT p.id, p.user_id, p.tracks, p.type, p.name, p.created_at, p.visibility, p.year, p.week, p.month, u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM playlists p
 JOIN users u
   ON u.id = p.user_id
@@ -349,6 +352,7 @@ func (q *Queries) GetPlaylist(ctx context.Context, id uuid.UUID) (GetPlaylistRow
 		&i.User.ID,
 		&i.User.DisplayName,
 		&i.User.Username,
+		&i.User.ImageUrl,
 		&i.User.Email,
 		&i.User.RegisteredAt,
 		&i.User.Role,
@@ -373,7 +377,7 @@ func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) 
 }
 
 const getUserById = `-- name: GetUserById :one
-SELECT u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+SELECT u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM users u
 LEFT JOIN friendships f
     ON (
@@ -395,6 +399,7 @@ func (q *Queries) GetUserById(ctx context.Context, arg GetUserByIdParams) (User,
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
+		&i.ImageUrl,
 		&i.Email,
 		&i.RegisteredAt,
 		&i.Role,
@@ -408,7 +413,7 @@ func (q *Queries) GetUserById(ctx context.Context, arg GetUserByIdParams) (User,
 }
 
 const getUserBySpotifyId = `-- name: GetUserBySpotifyId :one
-SELECT id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE spotify_user_id = $1
+SELECT id, display_name, username, image_url, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE spotify_user_id = $1
 `
 
 func (q *Queries) GetUserBySpotifyId(ctx context.Context, spotifyUserID string) (User, error) {
@@ -418,6 +423,7 @@ func (q *Queries) GetUserBySpotifyId(ctx context.Context, spotifyUserID string) 
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
+		&i.ImageUrl,
 		&i.Email,
 		&i.RegisteredAt,
 		&i.Role,
@@ -431,7 +437,7 @@ func (q *Queries) GetUserBySpotifyId(ctx context.Context, spotifyUserID string) 
 }
 
 const getUserFromSession = `-- name: GetUserFromSession :one
-SELECT id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE refresh_token = $1
+SELECT id, display_name, username, image_url, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE refresh_token = $1
 `
 
 func (q *Queries) GetUserFromSession(ctx context.Context, refreshToken uuid.UUID) (User, error) {
@@ -441,6 +447,7 @@ func (q *Queries) GetUserFromSession(ctx context.Context, refreshToken uuid.UUID
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
+		&i.ImageUrl,
 		&i.Email,
 		&i.RegisteredAt,
 		&i.Role,
@@ -502,7 +509,7 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsPara
 }
 
 const listFriends = `-- name: ListFriends :many
-SELECT u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+SELECT u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM friendships f
 JOIN users u
   ON (u.id = CASE
@@ -526,6 +533,7 @@ func (q *Queries) ListFriends(ctx context.Context, userAID uuid.UUID) ([]User, e
 			&i.ID,
 			&i.DisplayName,
 			&i.Username,
+			&i.ImageUrl,
 			&i.Email,
 			&i.RegisteredAt,
 			&i.Role,
@@ -546,7 +554,7 @@ func (q *Queries) ListFriends(ctx context.Context, userAID uuid.UUID) ([]User, e
 }
 
 const listIncomingRequests = `-- name: ListIncomingRequests :many
-SELECT u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
+SELECT u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM friendships f
 JOIN users u
 ON (u.id = CASE
@@ -576,6 +584,7 @@ func (q *Queries) ListIncomingRequests(ctx context.Context, userAID uuid.UUID) (
 			&i.User.ID,
 			&i.User.DisplayName,
 			&i.User.Username,
+			&i.User.ImageUrl,
 			&i.User.Email,
 			&i.User.RegisteredAt,
 			&i.User.Role,
@@ -602,7 +611,7 @@ func (q *Queries) ListIncomingRequests(ctx context.Context, userAID uuid.UUID) (
 }
 
 const listOutgoingRequests = `-- name: ListOutgoingRequests :many
-SELECT u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
+SELECT u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM friendships f
 JOIN users u
 ON (u.id = CASE
@@ -632,6 +641,7 @@ func (q *Queries) ListOutgoingRequests(ctx context.Context, userAID uuid.UUID) (
 			&i.User.ID,
 			&i.User.DisplayName,
 			&i.User.Username,
+			&i.User.ImageUrl,
 			&i.User.Email,
 			&i.User.RegisteredAt,
 			&i.User.Role,
@@ -659,7 +669,7 @@ func (q *Queries) ListOutgoingRequests(ctx context.Context, userAID uuid.UUID) (
 
 const listRequests = `-- name: ListRequests :many
 SELECT
-    u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
+    u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
     f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM friendships f
 JOIN users u
@@ -689,6 +699,7 @@ func (q *Queries) ListRequests(ctx context.Context, userAID uuid.UUID) ([]ListRe
 			&i.User.ID,
 			&i.User.DisplayName,
 			&i.User.Username,
+			&i.User.ImageUrl,
 			&i.User.Email,
 			&i.User.RegisteredAt,
 			&i.User.Role,
@@ -734,7 +745,7 @@ func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipPara
 
 const searchUsers = `-- name: SearchUsers :many
 SELECT
-    u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
+    u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
     f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM users u
 LEFT JOIN friendships f
@@ -776,6 +787,7 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Sea
 			&i.User.ID,
 			&i.User.DisplayName,
 			&i.User.Username,
+			&i.User.ImageUrl,
 			&i.User.Email,
 			&i.User.RegisteredAt,
 			&i.User.Role,
@@ -805,7 +817,7 @@ const signUpUser = `-- name: SignUpUser :one
 UPDATE users
 SET username = $1, display_name = $2, registered_at = now()
 WHERE id = $3
-RETURNING id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
+RETURNING id, display_name, username, image_url, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
 `
 
 type SignUpUserParams struct {
@@ -821,6 +833,7 @@ func (q *Queries) SignUpUser(ctx context.Context, arg SignUpUserParams) (User, e
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
+		&i.ImageUrl,
 		&i.Email,
 		&i.RegisteredAt,
 		&i.Role,
@@ -833,6 +846,25 @@ func (q *Queries) SignUpUser(ctx context.Context, arg SignUpUserParams) (User, e
 	return i, err
 }
 
+const updateUserImage = `-- name: UpdateUserImage :execrows
+UPDATE users
+SET image_url = $1
+WHERE id = $2
+`
+
+type UpdateUserImageParams struct {
+	ImageUrl pgtype.Text `json:"image_url"`
+	ID       uuid.UUID   `json:"id"`
+}
+
+func (q *Queries) UpdateUserImage(ctx context.Context, arg UpdateUserImageParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateUserImage, arg.ImageUrl, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateUserProfile = `-- name: UpdateUserProfile :one
 UPDATE users
 SET
@@ -840,7 +872,7 @@ SET
   display_name = COALESCE($2, display_name),
   email = COALESCE($4, email)
 WHERE id = $3
-RETURNING id, display_name, username, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
+RETURNING id, display_name, username, image_url, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
 `
 
 type UpdateUserProfileParams struct {
@@ -862,6 +894,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
+		&i.ImageUrl,
 		&i.Email,
 		&i.RegisteredAt,
 		&i.Role,

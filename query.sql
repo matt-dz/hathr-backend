@@ -5,6 +5,11 @@ ON CONFLICT (spotify_user_id) DO UPDATE
 SET email = users.email -- no op
 RETURNING *;
 
+-- name: UpdateUserImage :execrows
+UPDATE users
+SET image_url = $1
+WHERE id = $2;
+
 -- name: GetUserBySpotifyId :one
 SELECT * FROM users WHERE spotify_user_id = $1;
 

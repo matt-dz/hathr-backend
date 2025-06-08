@@ -9,8 +9,6 @@ import (
 	"os"
 	"time"
 
-	"hathr-backend/internal/spotify/models"
-
 	"github.com/golang-jwt/jwt/v5"
 	jose "gopkg.in/square/go-jose.v2"
 )
@@ -40,52 +38,25 @@ func getLatestKID() (string, error) {
 	return jwks.Keys[0].KeyID, nil
 }
 
-type SpotifyClaims struct {
-	DisplayName string         `json:"display_name"`
-	Email       string         `json:"email"`
-	Images      []models.Image `json:"images"`
-	ID          string         `json:"id"`
-}
-
 type JWTParams struct {
-	Role        string
-	UserID      string
-	Registered  bool
-	Username    string
-	DisplayName string
-	SpotifyData SpotifyClaims
+	Role       string
+	UserID     string
+	Registered bool
 }
 
 // Creates a JWT
 func CreateJWT(params JWTParams, privateKeyBytes []byte) (string, error) {
-
 	kid, err := getLatestKID()
 	if err != nil {
 		return "", err
 	}
 
-	images := make([]map[string]interface{}, 0)
-	for _, image := range params.SpotifyData.Images {
-		images = append(images, map[string]interface{}{
-			"url":    image.URL,
-			"height": image.Height,
-			"width":  image.Width,
-		})
-	}
 	claims := jwt.MapClaims{
-		"sub":          params.UserID,
-		"iat":          time.Now().Unix(),
-		"exp":          time.Now().Add(time.Hour).Unix(),
-		"role":         params.Role,
-		"registered":   params.Registered,
-		"username":     params.Username,
-		"display_name": params.DisplayName,
-		"spotify": map[string]interface{}{
-			"display_name": params.SpotifyData.DisplayName,
-			"email":        params.SpotifyData.Email,
-			"images":       images,
-			"id":           params.SpotifyData.ID,
-		},
+		"sub":        params.UserID,
+		"role":       params.Role,
+		"registered": params.Registered,
+		"iat":        time.Now().Unix(),
+		"exp":        time.Now().Add(time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = kid

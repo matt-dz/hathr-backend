@@ -9,6 +9,7 @@ CREATE TABLE users (
     id UUID DEFAULT gen_random_uuid (),
     display_name TEXT,
     username TEXT UNIQUE,
+    image_url TEXT,
     email TEXT NOT NULL,
     registered_at TIMESTAMP,
     role role NOT NULL DEFAULT 'user',

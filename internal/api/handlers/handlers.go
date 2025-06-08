@@ -54,12 +54,14 @@ func buildPublicUser(user database.User) (models.PublicUser, error) {
 		return response, err
 	}
 
+	spotifyData := buildSpotifyPublicUser(spotifyUserData)
 	return models.PublicUser{
 		ID:              user.ID,
 		CreatedAt:       user.CreatedAt.Time,
 		Username:        user.Username.String,
+		ImageURL:        user.ImageUrl.String,
 		DisplayName:     user.DisplayName.String,
-		SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
+		SpotifyUserData: &spotifyData,
 	}, nil
 }
 
@@ -70,13 +72,15 @@ func buildUserProfile(user database.User) (models.UserProfile, error) {
 		return response, err
 	}
 
+	spotifyData := buildSpotifyPublicUser(spotifyUserData)
 	return models.UserProfile{
 		ID:              user.ID,
 		CreatedAt:       user.CreatedAt.Time,
 		Username:        user.Username.String,
 		Email:           user.Email,
+		ImageURL:        user.ImageUrl.String,
 		DisplayName:     user.DisplayName.String,
-		SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
+		SpotifyUserData: &spotifyData,
 	}, nil
 }
 
@@ -128,19 +132,11 @@ func copyRequeststoFriendRequest(row []database.ListRequestsRow) ([]models.Frien
 	return response, nil
 }
 
-func buildJWT(user database.User, spotifyData spotifyModels.User, key string) (string, error) {
+func buildJWT(user database.User, key string) (string, error) {
 	return hathrJWT.CreateJWT(hathrJWT.JWTParams{
-		UserID:      user.ID.String(),
-		Role:        string(user.Role),
-		Registered:  !user.RegisteredAt.Time.IsZero(),
-		Username:    user.Username.String,
-		DisplayName: user.DisplayName.String,
-		SpotifyData: hathrJWT.SpotifyClaims{
-			DisplayName: spotifyData.DisplayName,
-			Email:       spotifyData.Email,
-			Images:      spotifyData.Images,
-			ID:          spotifyData.ID,
-		},
+		UserID:     user.ID.String(),
+		Role:       string(user.Role),
+		Registered: user.RegisteredAt.Valid,
 	}, []byte(key))
 }
 
@@ -192,6 +188,22 @@ func writeErrorResponse(w *http.ResponseWriter, ctx context.Context, env *hathrE
 	}
 }
 
+func extractLargestImage(spotifyData spotifyModels.User) string {
+	if len(spotifyData.Images) == 0 {
+		return ""
+	}
+
+	largestImage := spotifyData.Images[0]
+	largestSize := largestImage.Height
+	for _, image := range spotifyData.Images {
+		if image.Height > largestSize {
+			largestImage = image
+			largestSize = image.Height
+		}
+	}
+	return largestImage.URL
+}
+
 func ServeSpotifyOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
@@ -229,7 +241,7 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 	err := hathrJson.DecodeJson(&loginRequest, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, err.Error())
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 
@@ -297,6 +309,29 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update user imageURL
+	imageURL := extractLargestImage(spotifyUser)
+	if imageURL != "" {
+		env.Logger.DebugContext(ctx, "Updating user image")
+		rows, err := env.Database.UpdateUserImage(ctx, database.UpdateUserImageParams{
+			ID: dbUser.ID,
+			ImageUrl: pgtype.Text{
+				String: imageURL,
+				Valid:  true,
+			},
+		})
+		if err != nil {
+			env.ErrorContext(ctx, "Unable to update user image", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		} else if rows == 0 {
+			// sanity check - this shouldn't be possible
+			env.ErrorContext(ctx, "No rows updated when updating user image", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// Retrieve private key for JWT signing
 	env.Logger.DebugContext(ctx, "Retrieving private key")
 	key, err := env.Database.GetLatestPrivateKey(ctx)
@@ -308,7 +343,7 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT for user
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	signedJWT, err := buildJWT(dbUser, spotifyUser, key.Value)
+	signedJWT, err := buildJWT(dbUser, key.Value)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -438,7 +473,7 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT for user
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	signedJWT, err := buildJWT(dbUser, spotifyUser, key.Value)
+	signedJWT, err := buildJWT(dbUser, key.Value)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -520,7 +555,7 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	accessToken, err := buildJWT(user, spotifyUserData, key.Value)
+	accessToken, err := buildJWT(user, key.Value)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -1335,22 +1370,10 @@ func GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Unmarshal spotify data
-	user := models.User{
-		ID:           dbUser.ID,
-		DisplayName:  dbUser.DisplayName.String,
-		Username:     dbUser.Username.String,
-		Email:        dbUser.Email,
-		RegisteredAt: dbUser.RegisteredAt.Time,
-		Role:         string(dbUser.Role),
-
-		SpotifyUserID: dbUser.SpotifyUserID,
-		CreatedAt:     dbUser.CreatedAt.Time,
-	}
-	env.Logger.DebugContext(ctx, "Unmarshaling spotify data")
-	err = json.Unmarshal(dbUser.SpotifyUserData, &user.SpotifyUserData)
+	// build user
+	user, err := buildUserProfile(dbUser)
 	if err != nil {
-		env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify data", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Failed to build user profile", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -1358,8 +1381,7 @@ func GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
 	// Encode response
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(user)
-	if err != nil {
+	if err = json.NewEncoder(w).Encode(user); err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode user response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

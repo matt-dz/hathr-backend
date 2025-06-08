@@ -47,28 +47,33 @@ func buildSpotifyPublicUser(spotifyUserData spotifyModels.User) spotifyModels.Pu
 	}
 }
 
-func buildPublicUser(user database.User, spotifyUserData spotifyModels.User) models.PublicUser {
+func buildPublicUser(user database.User) (models.PublicUser, error) {
+	var response models.PublicUser
+	var spotifyUserData spotifyModels.User
+	if err := json.Unmarshal(user.SpotifyUserData, &spotifyUserData); err != nil {
+		return response, err
+	}
+
 	return models.PublicUser{
 		ID:              user.ID,
 		CreatedAt:       user.CreatedAt.Time,
 		Username:        user.Username.String,
 		DisplayName:     user.DisplayName.String,
 		SpotifyUserData: buildSpotifyPublicUser(spotifyUserData),
-	}
+	}, nil
 }
 
 func copyOutgoingRequeststoFriendRequest(row []database.ListOutgoingRequestsRow) ([]models.FriendRequest, error) {
 	response := make([]models.FriendRequest, len(row))
 	for i, v := range row {
-		var spotifyUserData spotifyModels.User
-		err := json.Unmarshal(v.User.SpotifyUserData, &spotifyUserData)
+		user, err := buildPublicUser(v.User)
 		if err != nil {
 			return response, err
 		}
 
 		response[i] = models.FriendRequest{
 			Friendship: v.Friendship,
-			User:       buildPublicUser(v.User, spotifyUserData),
+			User:       user,
 		}
 	}
 	return response, nil
@@ -77,15 +82,14 @@ func copyOutgoingRequeststoFriendRequest(row []database.ListOutgoingRequestsRow)
 func copyIncomingRequeststoFriendRequest(row []database.ListIncomingRequestsRow) ([]models.FriendRequest, error) {
 	response := make([]models.FriendRequest, len(row))
 	for i, v := range row {
-		var spotifyUserData spotifyModels.User
-		err := json.Unmarshal(v.User.SpotifyUserData, &spotifyUserData)
+		user, err := buildPublicUser(v.User)
 		if err != nil {
 			return response, err
 		}
 
 		response[i] = models.FriendRequest{
 			Friendship: v.Friendship,
-			User:       buildPublicUser(v.User, spotifyUserData),
+			User:       user,
 		}
 	}
 	return response, nil
@@ -94,15 +98,14 @@ func copyIncomingRequeststoFriendRequest(row []database.ListIncomingRequestsRow)
 func copyRequeststoFriendRequest(row []database.ListRequestsRow) ([]models.FriendRequest, error) {
 	response := make([]models.FriendRequest, len(row))
 	for i, v := range row {
-		var spotifyUserData spotifyModels.User
-		err := json.Unmarshal(v.User.SpotifyUserData, &spotifyUserData)
+		user, err := buildPublicUser(v.User)
 		if err != nil {
 			return response, err
 		}
 
 		response[i] = models.FriendRequest{
 			Friendship: v.Friendship,
-			User:       buildPublicUser(v.User, spotifyUserData),
+			User:       user,
 		}
 	}
 	return response, nil
@@ -124,8 +127,8 @@ func buildJWT(user database.User, spotifyData spotifyModels.User, key string) (s
 	}, []byte(key))
 }
 
-func buildPlaylist(playlist database.Playlist, env *hathrEnv.Env, ctx context.Context) (responses.Playlist, error) {
-	res := responses.Playlist{
+func buildPlaylist(playlist database.Playlist, env *hathrEnv.Env, ctx context.Context) (models.Playlist, error) {
+	res := models.Playlist{
 		ID:         playlist.ID,
 		UserID:     playlist.UserID,
 		Year:       int(playlist.Year),
@@ -561,7 +564,7 @@ func GetPersonalPlaylists(w http.ResponseWriter, r *http.Request) {
 	// Decode tracks
 	env.Logger.DebugContext(ctx, "Decoding tracks")
 	playlists := responses.GetUserPlaylists{
-		Playlists: make([]responses.Playlist, len(dbPlaylists)),
+		Playlists: make([]models.Playlist, len(dbPlaylists)),
 	}
 	for i, playlist := range dbPlaylists {
 		p, err := buildPlaylist(playlist, env, ctx)
@@ -648,9 +651,9 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 
 	// Unmarshal spotify user data
 	env.Logger.DebugContext(ctx, "Unmarshaling spotify user data")
-	var spotifyUserData spotifyModels.User
-	if err := json.Unmarshal(dbPlaylist.User.SpotifyUserData, &spotifyUserData); err != nil {
-		env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify user data", slog.Any("error", err))
+	user, err := buildPublicUser(dbPlaylist.User)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Error building user", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -660,7 +663,7 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(responses.GetPlaylist{
 		Playlist: playlist,
-		User:     buildPublicUser(dbPlaylist.User, spotifyUserData),
+		User:     user,
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))
@@ -788,13 +791,13 @@ func ListFriends(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Processing friends data")
 	responseFriends := make([]models.PublicUser, len(friends))
 	for i, f := range friends {
-		var spotifyUserData spotifyModels.User
-		if err := json.Unmarshal(f.SpotifyUserData, &spotifyUserData); err != nil {
-			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify user data", slog.Any("error", err))
+		user, err := buildPublicUser(f)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to build user", slog.Any("error", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		responseFriends[i] = buildPublicUser(f, spotifyUserData)
+		responseFriends[i] = user
 	}
 
 	// Encode response
@@ -1241,16 +1244,15 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	users := make([]responses.UserWithFriendship, len(dbUsers))
 	for i, dbUser := range dbUsers {
 		// Unmarshal spotify data
-		var spotifyUserData spotifyModels.User
-		err = json.Unmarshal(dbUser.User.SpotifyUserData, &spotifyUserData)
+		user, err := buildPublicUser(dbUser.User)
 		if err != nil {
-			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify data", slog.Any("error", err))
-			http.Error(w, "Unable to unmarshal user data", http.StatusInternalServerError)
+			env.Logger.ErrorContext(ctx, "Unable to build user", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 
 		users[i] = responses.UserWithFriendship{
-			User:       buildPublicUser(dbUser.User, spotifyUserData),
+			User:       user,
 			Friendship: nil,
 		}
 		if dbUser.Status.Valid {
@@ -1487,7 +1489,7 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 	// Decode tracks
 	env.Logger.DebugContext(ctx, "Decoding tracks")
 	playlists := responses.GetUserPlaylists{
-		Playlists: make([]responses.Playlist, len(dbPlaylists)),
+		Playlists: make([]models.Playlist, len(dbPlaylists)),
 	}
 	for i, dbPlaylist := range dbPlaylists {
 		playlist, err := buildPlaylist(dbPlaylist, env, ctx)
@@ -1542,13 +1544,13 @@ func GetUserFriends(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Processing friends data")
 	responseFriends := make([]models.PublicUser, len(friends))
 	for i, f := range friends {
-		var spotifyUserData spotifyModels.User
-		if err := json.Unmarshal(f.SpotifyUserData, &spotifyUserData); err != nil {
+		user, err := buildPublicUser(f)
+		if err != nil {
 			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify user data", slog.Any("error", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		responseFriends[i] = buildPublicUser(f, spotifyUserData)
+		responseFriends[i] = user
 	}
 
 	// Encode response
@@ -1562,4 +1564,93 @@ func GetUserFriends(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+func GetFriendsPlaylists(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get playlists
+	env.Logger.DebugContext(ctx, "Retrieving playlists from DB")
+	rows, err := env.Database.GetFriendPlaylists(ctx, uuid.MustParse(userID))
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get friend playlists", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Build response
+	env.Logger.DebugContext(ctx, "Building response")
+	response := make([]models.UserAndPlaylistWithoutTracks, len(rows))
+	for i, row := range rows {
+		user, err := buildPublicUser(row.User)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Unable to build user", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		response[i] = models.UserAndPlaylistWithoutTracks{
+			User: user,
+			Playlist: models.PlaylistWithoutTracks{
+				ID:         row.PlaylistID,
+				UserID:     row.User.ID,
+				Year:       int(row.PlaylistYear),
+				Name:       row.PlaylistName,
+				Type:       string(row.PlaylistType),
+				CreatedAt:  row.PlaylistCreatedAt.Time,
+				Visibility: row.PlaylistVisibility,
+			},
+		}
+
+		if row.PlaylistType == database.PlaylistTypeMonthly {
+			month, err := models.GetMonth(int(row.PlaylistMonth.Int32))
+			if err != nil {
+				env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+			response[i].Playlist.Month = &month
+			response[i].Playlist.Week = nil
+		} else if row.PlaylistType == database.PlaylistTypeWeekly {
+			week := int(row.PlaylistWeek.Int32)
+			response[i].Playlist.Week = &week
+			response[i].Playlist.Month = nil
+		}
+	}
+
+	// Encode response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(responses.GetFriendPlaylists{Playlists: response})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode friend playlists response", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 }

@@ -3,8 +3,6 @@
 package responses
 
 import (
-	"time"
-
 	"hathr-backend/internal/api/models"
 	"hathr-backend/internal/database"
 
@@ -23,27 +21,12 @@ type CreateMonthlyPlaylist struct {
 	ID uuid.UUID `json:"id" validate:"required"`
 }
 
-type Playlist struct {
-	ID     uuid.UUID                `json:"id"`
-	UserID uuid.UUID                `json:"user_id"`
-	Tracks []map[string]interface{} `json:"tracks"`
-	Year   int                      `json:"year"`
-	Name   string                   `json:"name"`
-
-	Type  string        `json:"type"`
-	Month *models.Month `json:"month"`
-	Week  *int          `json:"weekly"`
-
-	CreatedAt  time.Time                   `json:"created_at"`
-	Visibility database.PlaylistVisibility `json:"visibility"`
-}
-
 type GetUserPlaylists struct {
-	Playlists []Playlist `json:"playlists" validate:"required"`
+	Playlists []models.Playlist `json:"playlists" validate:"required"`
 }
 
 type GetPlaylist struct {
-	Playlist Playlist          `json:"playlist" validate:"required"`
+	Playlist models.Playlist   `json:"playlist" validate:"required"`
 	User     models.PublicUser `json:"user" validate:"required"`
 }
 
@@ -67,4 +50,8 @@ type SearchUsers struct {
 
 type UpdateFriendshipStatus struct {
 	Friendship database.Friendship `json:"friendship"`
+}
+
+type GetFriendPlaylists struct {
+	Playlists []models.UserAndPlaylistWithoutTracks `json:"playlists"`
 }

@@ -196,3 +196,36 @@ WHERE u.id = @searchee::uuid AND
 
 -- name: GetPersonalProfile :one
 SELECT * FROM users WHERE id = $1;
+
+-- name: GetFriendPlaylists :many
+WITH friends AS (
+    SELECT
+        CASE
+            WHEN f.user_a_id = $1 THEN f.user_b_id
+            ELSE f.user_a_id
+        END AS friend_id
+    FROM friendships f
+    WHERE f.status    = 'accepted'
+    AND (f.user_a_id = $1 OR f.user_b_id = $1)
+)
+SELECT
+    sqlc.embed(u),
+    p.id AS playlist_id,
+    p.type AS playlist_type,
+    p.name AS playlist_name,
+    p.year AS playlist_year,
+    p.week AS playlist_week,
+    p.month AS playlist_month,
+    p.created_at AS playlist_created_at,
+    p.visibility AS playlist_visibility
+FROM friends fr
+JOIN users u
+    ON u.id = fr.friend_id
+LEFT JOIN LATERAL (
+    SELECT id, type, name, year, week, month, visibility, created_at
+    FROM playlists
+    WHERE user_id = fr.friend_id AND visibility = 'public'
+    ORDER BY created_at DESC
+    LIMIT 1
+) p ON true
+ORDER BY u.username;

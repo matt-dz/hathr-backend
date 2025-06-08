@@ -48,14 +48,33 @@ func GetMonth(m int) (Month, error) {
 	return months[m-1], nil
 }
 
-type MonthlyPlaylist struct {
-	ID        uuid.UUID `json:"id" validate:"required"`
-	UserID    uuid.UUID `json:"user_id" validate:"required"`
-	Tracks    []string  `json:"tracks" validate:"required"`
-	Year      int16     `json:"year" validate:"required,gte=2025"`
-	Month     Month     `json:"month" validate:"required,validateFn"`
-	Name      string    `json:"name" validate:"required"`
-	CreatedAt time.Time `json:"created_at" validate:"required"`
+type Playlist struct {
+	ID     uuid.UUID                `json:"id"`
+	UserID uuid.UUID                `json:"user_id"`
+	Tracks []map[string]interface{} `json:"tracks"`
+	Year   int                      `json:"year"`
+	Name   string                   `json:"name"`
+
+	Type  string `json:"type"`
+	Month *Month `json:"month"`
+	Week  *int   `json:"weekly"`
+
+	CreatedAt  time.Time                   `json:"created_at"`
+	Visibility database.PlaylistVisibility `json:"visibility"`
+}
+
+type PlaylistWithoutTracks struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+	Year   int       `json:"year"`
+	Name   string    `json:"name"`
+
+	Type  string `json:"type"`
+	Month *Month `json:"month"`
+	Week  *int   `json:"weekly"`
+
+	CreatedAt  time.Time                   `json:"created_at"`
+	Visibility database.PlaylistVisibility `json:"visibility"`
 }
 
 type PublicUser struct {
@@ -64,6 +83,11 @@ type PublicUser struct {
 	DisplayName     string                   `json:"display_name"`
 	CreatedAt       time.Time                `json:"created_at"`
 	SpotifyUserData spotifyModels.PublicUser `json:"spotify_user_data"`
+}
+
+type UserAndPlaylistWithoutTracks struct {
+	User     PublicUser            `json:"user"`
+	Playlist PlaylistWithoutTracks `json:"playlist"`
 }
 
 type FriendRequest struct {

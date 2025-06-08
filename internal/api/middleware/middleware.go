@@ -263,6 +263,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 
 	playlists := s.PathPrefix("/playlists").Subrouter()
 	playlists.Use(AuthorizeRequest)
+	playlists.HandleFunc("/friends", handlers.GetFriendsPlaylists).Methods("GET", "OPTIONS")
 	playlists.HandleFunc("/{id}", handlers.GetPlaylist).Methods("GET", "OPTIONS")
 	playlists.HandleFunc("/{id}", handlers.UpdateVisibility).Methods("PATCH", "OPTIONS")
 

@@ -162,6 +162,92 @@ func (q *Queries) DeleteFriendRequest(ctx context.Context, arg DeleteFriendReque
 	return result.RowsAffected(), nil
 }
 
+const getFriendPlaylists = `-- name: GetFriendPlaylists :many
+WITH friends AS (
+    SELECT
+        CASE
+            WHEN f.user_a_id = $1 THEN f.user_b_id
+            ELSE f.user_a_id
+        END AS friend_id
+    FROM friendships f
+    WHERE f.status    = 'accepted'
+    AND (f.user_a_id = $1 OR f.user_b_id = $1)
+)
+SELECT
+    u.id, u.display_name, u.username, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
+    p.id AS playlist_id,
+    p.type AS playlist_type,
+    p.name AS playlist_name,
+    p.year AS playlist_year,
+    p.week AS playlist_week,
+    p.month AS playlist_month,
+    p.created_at AS playlist_created_at,
+    p.visibility AS playlist_visibility
+FROM friends fr
+JOIN users u
+    ON u.id = fr.friend_id
+LEFT JOIN LATERAL (
+    SELECT id, type, name, year, week, month, visibility, created_at
+    FROM playlists
+    WHERE user_id = fr.friend_id AND visibility = 'public'
+    ORDER BY created_at DESC
+    LIMIT 1
+) p ON true
+ORDER BY u.username
+`
+
+type GetFriendPlaylistsRow struct {
+	User               User               `json:"user"`
+	PlaylistID         uuid.UUID          `json:"playlist_id"`
+	PlaylistType       PlaylistType       `json:"playlist_type"`
+	PlaylistName       string             `json:"playlist_name"`
+	PlaylistYear       int32              `json:"playlist_year"`
+	PlaylistWeek       pgtype.Int4        `json:"playlist_week"`
+	PlaylistMonth      pgtype.Int4        `json:"playlist_month"`
+	PlaylistCreatedAt  pgtype.Timestamptz `json:"playlist_created_at"`
+	PlaylistVisibility PlaylistVisibility `json:"playlist_visibility"`
+}
+
+func (q *Queries) GetFriendPlaylists(ctx context.Context, userAID uuid.UUID) ([]GetFriendPlaylistsRow, error) {
+	rows, err := q.db.Query(ctx, getFriendPlaylists, userAID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetFriendPlaylistsRow
+	for rows.Next() {
+		var i GetFriendPlaylistsRow
+		if err := rows.Scan(
+			&i.User.ID,
+			&i.User.DisplayName,
+			&i.User.Username,
+			&i.User.Email,
+			&i.User.RegisteredAt,
+			&i.User.Role,
+			&i.User.SpotifyUserID,
+			&i.User.SpotifyUserData,
+			&i.User.CreatedAt,
+			&i.User.RefreshToken,
+			&i.User.RefreshExpiresAt,
+			&i.PlaylistID,
+			&i.PlaylistType,
+			&i.PlaylistName,
+			&i.PlaylistYear,
+			&i.PlaylistWeek,
+			&i.PlaylistMonth,
+			&i.PlaylistCreatedAt,
+			&i.PlaylistVisibility,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getLatestPrivateKey = `-- name: GetLatestPrivateKey :one
 SELECT kid, value FROM private_keys
 ORDER BY kid DESC

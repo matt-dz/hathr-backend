@@ -820,7 +820,7 @@ func ListFriends(w http.ResponseWriter, r *http.Request) {
 
 	// List friends
 	env.Logger.DebugContext(ctx, "Listing friends from DB")
-	friends, err := env.Database.ListFriends(ctx, uuid.MustParse(userID))
+	friends, err := env.Database.ListFriendsByID(ctx, uuid.MustParse(userID))
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to list friends", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -1388,7 +1388,7 @@ func GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func GetUserByID(w http.ResponseWriter, r *http.Request) {
+func GetUserByUsername(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
 	if !ok {
@@ -1409,7 +1409,7 @@ func GetUserByID(w http.ResponseWriter, r *http.Request) {
 		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
 		return
 	}
-	userID := mux.Vars(r)["user_id"]
+	username := mux.Vars(r)["username"]
 
 	// Validate parameters
 	env.Logger.DebugContext(ctx, "Validating parameters")
@@ -1418,17 +1418,12 @@ func GetUserByID(w http.ResponseWriter, r *http.Request) {
 		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
 		return
 	}
-	if err := uuid.Validate(userID); err != nil {
-		env.Logger.ErrorContext(ctx, "Invalid user ID in route parameter", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in route parameter")
-		return
-	}
 
 	// Search for user
 	env.Logger.DebugContext(ctx, "Searching for user in DB")
-	dbUser, err := env.Database.GetUserById(ctx, database.GetUserByIdParams{
+	dbUser, err := env.Database.GetUserByUsername(ctx, database.GetUserByUsernameParams{
 		Searcher: uuid.MustParse(searcherID),
-		Searchee: uuid.MustParse(userID),
+		Username: username,
 	})
 
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -1442,17 +1437,11 @@ func GetUserByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Unmarshal spotify data
-	user := models.PublicUser{
-		ID:          dbUser.ID,
-		DisplayName: dbUser.DisplayName.String,
-		Username:    dbUser.Username.String,
-		CreatedAt:   dbUser.CreatedAt.Time,
-	}
-	env.Logger.DebugContext(ctx, "Unmarshaling spotify data")
-	err = json.Unmarshal(dbUser.SpotifyUserData, &user.SpotifyUserData)
+	// Build public user
+	env.Logger.DebugContext(ctx, "Building public user")
+	user, err := buildPublicUser(dbUser)
 	if err != nil {
-		env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify data", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Unable to build user", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -1489,7 +1478,7 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
 		return
 	}
-	userID := mux.Vars(r)["user_id"]
+	username := mux.Vars(r)["username"]
 
 	// Validate parameters
 	env.Logger.DebugContext(ctx, "Validating parameters")
@@ -1498,17 +1487,15 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
 		return
 	}
-	if err := uuid.Validate(userID); err != nil {
-		env.ErrorContext(ctx, "Invalid user ID in route parameter", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid user ID in route parameter")
-		return
-	}
 
 	// Retrieve playlists from DB
 	env.Logger.DebugContext(ctx, "Retrieving playlists from DB")
 	dbPlaylists, err := env.Database.GetUserPlaylists(ctx, database.GetUserPlaylistsParams{
-		SearcherID: uuid.MustParse(searcherID),
-		UserID:     uuid.MustParse(userID),
+		UserID: uuid.MustParse(searcherID),
+		Username: pgtype.Text{
+			String: username,
+			Valid:  true,
+		},
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user playlists", slog.Any("error", err))
@@ -1552,19 +1539,14 @@ func GetUserFriends(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve request parameters
 	env.Logger.DebugContext(ctx, "Retrieving request parameters")
-	userID := mux.Vars(r)["user_id"]
-
-	// Validate parameters
-	env.Logger.DebugContext(ctx, "Validating parameters")
-	if err := uuid.Validate(userID); err != nil {
-		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid user ID")
-		return
-	}
+	username := mux.Vars(r)["username"]
 
 	// List friends
 	env.Logger.DebugContext(ctx, "Listing friends from DB")
-	friends, err := env.Database.ListFriends(ctx, uuid.MustParse(userID))
+	friends, err := env.Database.ListFriendsByUsername(ctx, pgtype.Text{
+		String: username,
+		Valid:  true,
+	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to list friends", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -1594,7 +1576,6 @@ func GetUserFriends(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-
 }
 
 func GetFriendsPlaylists(w http.ResponseWriter, r *http.Request) {

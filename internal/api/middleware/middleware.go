@@ -291,7 +291,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 
 	users := s.PathPrefix("/users").Subrouter()
 	users.Use(AuthorizeRequest)
-	users.HandleFunc("/{user_id}", handlers.GetUserByID).Methods("GET", "OPTIONS")
-	users.HandleFunc("/{user_id}/playlists", handlers.GetUserPlaylists).Methods("GET", "OPTIONS")
-	users.HandleFunc("/{user_id}/friends", handlers.GetUserFriends).Methods("GET", "OPTIONS")
+	users.HandleFunc("/{username}", handlers.GetUserByUsername).Methods("GET", "OPTIONS")
+	users.HandleFunc("/{username}/playlists", handlers.GetUserPlaylists).Methods("GET", "OPTIONS")
+	users.HandleFunc("/{username}/friends", handlers.GetUserFriends).Methods("GET", "OPTIONS")
 }

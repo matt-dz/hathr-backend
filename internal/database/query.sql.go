@@ -376,24 +376,12 @@ func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) 
 	return value, err
 }
 
-const getUserById = `-- name: GetUserById :one
-SELECT u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
-FROM users u
-LEFT JOIN friendships f
-    ON (
-    f.user_a_id = LEAST($1::uuid, u.id) AND f.user_b_id = GREATEST($1::uuid, u.id)
-    )
-WHERE u.id = $2::uuid AND
-      (f.status IS NULL OR f.status <> 'blocked')
+const getUserBySpotifyId = `-- name: GetUserBySpotifyId :one
+SELECT id, display_name, username, image_url, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE spotify_user_id = $1
 `
 
-type GetUserByIdParams struct {
-	Searcher uuid.UUID `json:"searcher"`
-	Searchee uuid.UUID `json:"searchee"`
-}
-
-func (q *Queries) GetUserById(ctx context.Context, arg GetUserByIdParams) (User, error) {
-	row := q.db.QueryRow(ctx, getUserById, arg.Searcher, arg.Searchee)
+func (q *Queries) GetUserBySpotifyId(ctx context.Context, spotifyUserID string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserBySpotifyId, spotifyUserID)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -412,12 +400,24 @@ func (q *Queries) GetUserById(ctx context.Context, arg GetUserByIdParams) (User,
 	return i, err
 }
 
-const getUserBySpotifyId = `-- name: GetUserBySpotifyId :one
-SELECT id, display_name, username, image_url, email, registered_at, role, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE spotify_user_id = $1
+const getUserByUsername = `-- name: GetUserByUsername :one
+SELECT u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+FROM users u
+LEFT JOIN friendships f
+    ON (
+    f.user_a_id = LEAST($1::uuid, u.id) AND f.user_b_id = GREATEST($1::uuid, u.id)
+    )
+WHERE u.username = $2::text AND
+      (f.status IS NULL OR f.status <> 'blocked')
 `
 
-func (q *Queries) GetUserBySpotifyId(ctx context.Context, spotifyUserID string) (User, error) {
-	row := q.db.QueryRow(ctx, getUserBySpotifyId, spotifyUserID)
+type GetUserByUsernameParams struct {
+	Searcher uuid.UUID `json:"searcher"`
+	Username string    `json:"username"`
+}
+
+func (q *Queries) GetUserByUsername(ctx context.Context, arg GetUserByUsernameParams) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByUsername, arg.Searcher, arg.Username)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -463,22 +463,24 @@ func (q *Queries) GetUserFromSession(ctx context.Context, refreshToken uuid.UUID
 const getUserPlaylists = `-- name: GetUserPlaylists :many
 SELECT p.id, p.user_id, p.tracks, p.type, p.name, p.created_at, p.visibility, p.year, p.week, p.month
 FROM playlists p
+JOIN users u
+  ON u.id = p.user_id
 LEFT JOIN friendships f
   ON (f.user_a_id = LEAST($1::uuid, p.user_id) AND f.user_b_id = GREATEST($1::uuid, p.user_id))
 WHERE
-    p.user_id = $2::uuid AND
+    u.username = $2 AND
     (f.status IS NULL OR f.status <> 'blocked') AND
     (p.visibility = 'public' OR
     (p.visibility = 'private' AND p.user_id = $1::uuid))
 `
 
 type GetUserPlaylistsParams struct {
-	SearcherID uuid.UUID `json:"searcher_id"`
-	UserID     uuid.UUID `json:"user_id"`
+	UserID   uuid.UUID   `json:"user_id"`
+	Username pgtype.Text `json:"username"`
 }
 
 func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsParams) ([]Playlist, error) {
-	rows, err := q.db.Query(ctx, getUserPlaylists, arg.SearcherID, arg.UserID)
+	rows, err := q.db.Query(ctx, getUserPlaylists, arg.UserID, arg.Username)
 	if err != nil {
 		return nil, err
 	}
@@ -508,7 +510,7 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsPara
 	return items, nil
 }
 
-const listFriends = `-- name: ListFriends :many
+const listFriendsByID = `-- name: ListFriendsByID :many
 SELECT u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM friendships f
 JOIN users u
@@ -520,8 +522,56 @@ WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
   AND f.status = 'accepted'
 `
 
-func (q *Queries) ListFriends(ctx context.Context, userAID uuid.UUID) ([]User, error) {
-	rows, err := q.db.Query(ctx, listFriends, userAID)
+func (q *Queries) ListFriendsByID(ctx context.Context, userAID uuid.UUID) ([]User, error) {
+	rows, err := q.db.Query(ctx, listFriendsByID, userAID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.Username,
+			&i.ImageUrl,
+			&i.Email,
+			&i.RegisteredAt,
+			&i.Role,
+			&i.SpotifyUserID,
+			&i.SpotifyUserData,
+			&i.CreatedAt,
+			&i.RefreshToken,
+			&i.RefreshExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFriendsByUsername = `-- name: ListFriendsByUsername :many
+SELECT friend.id, friend.display_name, friend.username, friend.image_url, friend.email, friend.registered_at, friend.role, friend.spotify_user_id, friend.spotify_user_data, friend.created_at, friend.refresh_token, friend.refresh_expires_at
+FROM users AS me
+  JOIN friendships AS f
+    ON me.id IN (f.user_a_id, f.user_b_id)
+  JOIN users AS friend
+    ON friend.id = CASE
+         WHEN me.id = f.user_a_id THEN f.user_b_id
+         ELSE f.user_a_id
+       END
+WHERE
+  me.username = $1
+  AND f.status = 'accepted'
+`
+
+func (q *Queries) ListFriendsByUsername(ctx context.Context, username pgtype.Text) ([]User, error) {
+	rows, err := q.db.Query(ctx, listFriendsByUsername, username)
 	if err != nil {
 		return nil, err
 	}

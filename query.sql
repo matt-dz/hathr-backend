@@ -45,13 +45,15 @@ SELECT * FROM playlists WHERE user_id = $1;
 -- name: GetUserPlaylists :many
 SELECT p.*
 FROM playlists p
+JOIN users u
+  ON u.id = p.user_id
 LEFT JOIN friendships f
-  ON (f.user_a_id = LEAST(@searcher_id::uuid, p.user_id) AND f.user_b_id = GREATEST(@searcher_id::uuid, p.user_id))
+  ON (f.user_a_id = LEAST(@user_id::uuid, p.user_id) AND f.user_b_id = GREATEST(@user_id::uuid, p.user_id))
 WHERE
-    p.user_id = @user_id::uuid AND
+    u.username = @username AND
     (f.status IS NULL OR f.status <> 'blocked') AND
     (p.visibility = 'public' OR
-    (p.visibility = 'private' AND p.user_id = @searcher_id::uuid));
+    (p.visibility = 'private' AND p.user_id = @user_id::uuid));
 
 -- name: GetPlaylist :one
 SELECT sqlc.embed(p), sqlc.embed(u)
@@ -141,7 +143,7 @@ RETURNING *;
 DELETE FROM friendships
     WHERE user_a_id = LEAST(@user_a_id::uuid, @user_b_id::uuid) AND user_b_id = GREATEST(@user_a_id::uuid, @user_b_id::uuid);
 
--- name: ListFriends :many
+-- name: ListFriendsByID :many
 SELECT u.*
 FROM friendships f
 JOIN users u
@@ -151,6 +153,21 @@ JOIN users u
     END)
 WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
   AND f.status = 'accepted';
+
+-- name: ListFriendsByUsername :many
+SELECT friend.*
+FROM users AS me
+  JOIN friendships AS f
+    ON me.id IN (f.user_a_id, f.user_b_id)
+  JOIN users AS friend
+    ON friend.id = CASE
+         WHEN me.id = f.user_a_id THEN f.user_b_id
+         ELSE f.user_a_id
+       END
+WHERE
+  me.username = $1
+  AND f.status = 'accepted';
+
 
 -- name: ListRequests :many
 SELECT
@@ -189,14 +206,14 @@ WHERE (f.user_a_id = LEAST($1, u.id) AND f.user_b_id = GREATEST($1, u.id))
 AND f.requester_id <> $1
 AND f.status = 'pending';
 
--- name: GetUserById :one
+-- name: GetUserByUsername :one
 SELECT u.*
 FROM users u
 LEFT JOIN friendships f
     ON (
     f.user_a_id = LEAST(@searcher::uuid, u.id) AND f.user_b_id = GREATEST(@searcher::uuid, u.id)
     )
-WHERE u.id = @searchee::uuid AND
+WHERE u.username = @username::text AND
       (f.status IS NULL OR f.status <> 'blocked');
 
 -- name: GetPersonalProfile :one

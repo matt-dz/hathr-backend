@@ -1,5 +1,11 @@
 package models
 
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
 type LoginRequest struct {
 	Code         string `json:"code" validate:"required"`
 	CodeVerifier string `json:"code_verifier" validate:"required"`
@@ -53,4 +59,17 @@ type PublicUser struct {
 	ID           string       `json:"id"`
 	Images       []Image      `json:"images"`
 	URI          string       `json:"uri"`
+}
+
+type PlaylistWithoutTracks struct {
+	ID         uuid.UUID `json:"id"`
+	UserID     uuid.UUID `json:"user_id"`
+	NumTracks  int       `json:"num_tracks"`
+	Type       string    `json:"type"`
+	Name       string    `json:"name"`
+	CreatedAt  time.Time `json:"created_at"`
+	Visibility string    `json:"visibility"`
+	Year       int       `json:"year"`
+	Week       *int      `json:"week"`
+	Month      *int      `json:"month"`
 }

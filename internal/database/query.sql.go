@@ -183,12 +183,13 @@ SELECT
     p.week AS playlist_week,
     p.month AS playlist_month,
     p.created_at AS playlist_created_at,
-    p.visibility AS playlist_visibility
+    p.visibility AS playlist_visibility,
+    ARRAY_LENGTH(p.tracks, 1) AS num_tracks
 FROM friends fr
 JOIN users u
     ON u.id = fr.friend_id
 LEFT JOIN LATERAL (
-    SELECT id, type, name, year, week, month, visibility, created_at
+    SELECT id, user_id, tracks, type, name, created_at, visibility, year, week, month
     FROM playlists
     WHERE user_id = fr.friend_id AND visibility = 'public'
     ORDER BY created_at DESC
@@ -207,6 +208,7 @@ type GetFriendPlaylistsRow struct {
 	PlaylistMonth      pgtype.Int4        `json:"playlist_month"`
 	PlaylistCreatedAt  pgtype.Timestamptz `json:"playlist_created_at"`
 	PlaylistVisibility PlaylistVisibility `json:"playlist_visibility"`
+	NumTracks          int32              `json:"num_tracks"`
 }
 
 func (q *Queries) GetFriendPlaylists(ctx context.Context, userAID uuid.UUID) ([]GetFriendPlaylistsRow, error) {
@@ -239,6 +241,7 @@ func (q *Queries) GetFriendPlaylists(ctx context.Context, userAID uuid.UUID) ([]
 			&i.PlaylistMonth,
 			&i.PlaylistCreatedAt,
 			&i.PlaylistVisibility,
+			&i.NumTracks,
 		); err != nil {
 			return nil, err
 		}
@@ -264,22 +267,39 @@ func (q *Queries) GetLatestPrivateKey(ctx context.Context) (PrivateKey, error) {
 }
 
 const getPersonalPlaylists = `-- name: GetPersonalPlaylists :many
-SELECT id, user_id, tracks, type, name, created_at, visibility, year, week, month FROM playlists WHERE user_id = $1
+SELECT
+    p.id, p.user_id, ARRAY_LENGTH(p.tracks, 1) AS num_tracks,
+    p.type, p.name, p.created_at, p.visibility,
+    p.year, p.week, p.month
+FROM playlists p WHERE user_id = $1
 `
 
-func (q *Queries) GetPersonalPlaylists(ctx context.Context, userID uuid.UUID) ([]Playlist, error) {
+type GetPersonalPlaylistsRow struct {
+	ID         uuid.UUID          `json:"id"`
+	UserID     uuid.UUID          `json:"user_id"`
+	NumTracks  int32              `json:"num_tracks"`
+	Type       PlaylistType       `json:"type"`
+	Name       string             `json:"name"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	Visibility PlaylistVisibility `json:"visibility"`
+	Year       int32              `json:"year"`
+	Week       pgtype.Int4        `json:"week"`
+	Month      pgtype.Int4        `json:"month"`
+}
+
+func (q *Queries) GetPersonalPlaylists(ctx context.Context, userID uuid.UUID) ([]GetPersonalPlaylistsRow, error) {
 	rows, err := q.db.Query(ctx, getPersonalPlaylists, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Playlist
+	var items []GetPersonalPlaylistsRow
 	for rows.Next() {
-		var i Playlist
+		var i GetPersonalPlaylistsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.Tracks,
+			&i.NumTracks,
 			&i.Type,
 			&i.Name,
 			&i.CreatedAt,
@@ -461,12 +481,15 @@ func (q *Queries) GetUserFromSession(ctx context.Context, refreshToken uuid.UUID
 }
 
 const getUserPlaylists = `-- name: GetUserPlaylists :many
-SELECT p.id, p.user_id, p.tracks, p.type, p.name, p.created_at, p.visibility, p.year, p.week, p.month
+SELECT
+    p.id, p.user_id, ARRAY_LENGTH(p.tracks, 1) AS num_tracks,
+    p.type, p.name, p.created_at, p.visibility,
+    p.year, p.week, p.month
 FROM playlists p
 JOIN users u
-  ON u.id = p.user_id
+    ON u.id = p.user_id
 LEFT JOIN friendships f
-  ON (f.user_a_id = LEAST($1::uuid, p.user_id) AND f.user_b_id = GREATEST($1::uuid, p.user_id))
+    ON (f.user_a_id = LEAST($1::uuid, p.user_id) AND f.user_b_id = GREATEST($1::uuid, p.user_id))
 WHERE
     u.username = $2 AND
     (f.status IS NULL OR f.status <> 'blocked') AND
@@ -479,19 +502,32 @@ type GetUserPlaylistsParams struct {
 	Username pgtype.Text `json:"username"`
 }
 
-func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsParams) ([]Playlist, error) {
+type GetUserPlaylistsRow struct {
+	ID         uuid.UUID          `json:"id"`
+	UserID     uuid.UUID          `json:"user_id"`
+	NumTracks  int32              `json:"num_tracks"`
+	Type       PlaylistType       `json:"type"`
+	Name       string             `json:"name"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	Visibility PlaylistVisibility `json:"visibility"`
+	Year       int32              `json:"year"`
+	Week       pgtype.Int4        `json:"week"`
+	Month      pgtype.Int4        `json:"month"`
+}
+
+func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsParams) ([]GetUserPlaylistsRow, error) {
 	rows, err := q.db.Query(ctx, getUserPlaylists, arg.UserID, arg.Username)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Playlist
+	var items []GetUserPlaylistsRow
 	for rows.Next() {
-		var i Playlist
+		var i GetUserPlaylistsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.Tracks,
+			&i.NumTracks,
 			&i.Type,
 			&i.Name,
 			&i.CreatedAt,

@@ -22,7 +22,7 @@ type CreateMonthlyPlaylist struct {
 }
 
 type GetUserPlaylists struct {
-	Playlists []models.Playlist `json:"playlists" validate:"required"`
+	Playlists []models.PlaylistWithoutTracks `json:"playlists"`
 }
 
 type GetPlaylist struct {

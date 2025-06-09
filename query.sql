@@ -40,15 +40,22 @@ VALUES ($1, $2, $3, $4, $5, 'monthly')
 RETURNING id;
 
 -- name: GetPersonalPlaylists :many
-SELECT * FROM playlists WHERE user_id = $1;
+SELECT
+    p.id, p.user_id, ARRAY_LENGTH(p.tracks, 1) AS num_tracks,
+    p.type, p.name, p.created_at, p.visibility,
+    p.year, p.week, p.month
+FROM playlists p WHERE user_id = $1;
 
 -- name: GetUserPlaylists :many
-SELECT p.*
+SELECT
+    p.id, p.user_id, ARRAY_LENGTH(p.tracks, 1) AS num_tracks,
+    p.type, p.name, p.created_at, p.visibility,
+    p.year, p.week, p.month
 FROM playlists p
 JOIN users u
-  ON u.id = p.user_id
+    ON u.id = p.user_id
 LEFT JOIN friendships f
-  ON (f.user_a_id = LEAST(@user_id::uuid, p.user_id) AND f.user_b_id = GREATEST(@user_id::uuid, p.user_id))
+    ON (f.user_a_id = LEAST(@user_id::uuid, p.user_id) AND f.user_b_id = GREATEST(@user_id::uuid, p.user_id))
 WHERE
     u.username = @username AND
     (f.status IS NULL OR f.status <> 'blocked') AND
@@ -239,12 +246,13 @@ SELECT
     p.week AS playlist_week,
     p.month AS playlist_month,
     p.created_at AS playlist_created_at,
-    p.visibility AS playlist_visibility
+    p.visibility AS playlist_visibility,
+    ARRAY_LENGTH(p.tracks, 1) AS num_tracks
 FROM friends fr
 JOIN users u
     ON u.id = fr.friend_id
 LEFT JOIN LATERAL (
-    SELECT id, type, name, year, week, month, visibility, created_at
+    SELECT *
     FROM playlists
     WHERE user_id = fr.friend_id AND visibility = 'public'
     ORDER BY created_at DESC

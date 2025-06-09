@@ -57,21 +57,22 @@ type Playlist struct {
 
 	Type  string `json:"type"`
 	Month *Month `json:"month"`
-	Week  *int   `json:"weekly"`
+	Week  *int   `json:"week"`
 
 	CreatedAt  time.Time                   `json:"created_at"`
 	Visibility database.PlaylistVisibility `json:"visibility"`
 }
 
 type PlaylistWithoutTracks struct {
-	ID     uuid.UUID `json:"id"`
-	UserID uuid.UUID `json:"user_id"`
-	Year   int       `json:"year"`
-	Name   string    `json:"name"`
+	ID        uuid.UUID `json:"id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Year      int       `json:"year"`
+	Name      string    `json:"name"`
+	NumTracks int       `json:"num_tracks"`
 
 	Type  string `json:"type"`
 	Month *Month `json:"month"`
-	Week  *int   `json:"weekly"`
+	Week  *int   `json:"week"`
 
 	CreatedAt  time.Time                   `json:"created_at"`
 	Visibility database.PlaylistVisibility `json:"visibility"`

@@ -601,25 +601,42 @@ func GetPersonalPlaylists(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decode tracks
-	env.Logger.DebugContext(ctx, "Decoding tracks")
-	playlists := responses.GetUserPlaylists{
-		Playlists: make([]models.Playlist, len(dbPlaylists)),
+	// Build response
+	env.Logger.DebugContext(ctx, "Building response")
+	response := responses.GetUserPlaylists{
+		Playlists: make([]models.PlaylistWithoutTracks, len(dbPlaylists)),
 	}
-	for i, playlist := range dbPlaylists {
-		p, err := buildPlaylist(playlist, env, ctx)
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
+	for i, dbPlaylist := range dbPlaylists {
+		response.Playlists[i] = models.PlaylistWithoutTracks{
+			ID:         dbPlaylist.ID,
+			UserID:     dbPlaylist.UserID,
+			Year:       int(dbPlaylist.Year),
+			Name:       dbPlaylist.Name,
+			NumTracks:  int(dbPlaylist.NumTracks),
+			Type:       string(dbPlaylist.Type),
+			CreatedAt:  dbPlaylist.CreatedAt.Time,
+			Visibility: dbPlaylist.Visibility,
+			Month:      nil,
+			Week:       nil,
 		}
-		playlists.Playlists[i] = p
+		if dbPlaylist.Type == database.PlaylistTypeMonthly {
+			month, err := models.GetMonth(int(dbPlaylist.Month.Int32))
+			if err != nil {
+				env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+			response.Playlists[i].Month = &month
+		} else {
+			week := int(dbPlaylist.Week.Int32)
+			response.Playlists[i].Week = &week
+		}
 	}
-	env.Logger.DebugContext(ctx, "Unmarshaled tracks")
 
-	// Serialize playlists to JSON
+	// Encode playlists
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(playlists)
+	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode user playlists", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -1503,25 +1520,41 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decode tracks
-	env.Logger.DebugContext(ctx, "Decoding tracks")
-	playlists := responses.GetUserPlaylists{
-		Playlists: make([]models.Playlist, len(dbPlaylists)),
+	// Build response
+	response := responses.GetUserPlaylists{
+		Playlists: make([]models.PlaylistWithoutTracks, len(dbPlaylists)),
 	}
 	for i, dbPlaylist := range dbPlaylists {
-		playlist, err := buildPlaylist(dbPlaylist, env, ctx)
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
+		response.Playlists[i] = models.PlaylistWithoutTracks{
+			ID:         dbPlaylist.ID,
+			UserID:     dbPlaylist.UserID,
+			NumTracks:  int(dbPlaylist.NumTracks),
+			Year:       int(dbPlaylist.Year),
+			Name:       dbPlaylist.Name,
+			Type:       string(dbPlaylist.Type),
+			CreatedAt:  dbPlaylist.CreatedAt.Time,
+			Visibility: dbPlaylist.Visibility,
+			Month:      nil,
+			Week:       nil,
 		}
-		playlists.Playlists[i] = playlist
+		if dbPlaylist.Type == database.PlaylistTypeMonthly {
+			month, err := models.GetMonth(int(dbPlaylist.Month.Int32))
+			if err != nil {
+				env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+			response.Playlists[i].Month = &month
+		} else {
+			week := int(dbPlaylist.Week.Int32)
+			response.Playlists[i].Week = &week
+		}
 	}
-	env.Logger.DebugContext(ctx, "Unmarshaled tracks")
 
-	// Serialize playlists to JSON
+	// Encode response
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(playlists)
+	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode user playlists", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -1635,6 +1668,7 @@ func GetFriendsPlaylists(w http.ResponseWriter, r *http.Request) {
 				Year:       int(row.PlaylistYear),
 				Name:       row.PlaylistName,
 				Type:       string(row.PlaylistType),
+				NumTracks:  int(row.NumTracks),
 				CreatedAt:  row.PlaylistCreatedAt.Time,
 				Visibility: row.PlaylistVisibility,
 			},

@@ -55,14 +55,18 @@ func buildPublicUser(user database.User) (models.PublicUser, error) {
 	}
 
 	spotifyData := buildSpotifyPublicUser(spotifyUserData)
-	return models.PublicUser{
+	response = models.PublicUser{
 		ID:              user.ID,
 		CreatedAt:       user.CreatedAt.Time,
 		Username:        user.Username.String,
-		ImageURL:        user.ImageUrl.String,
+		ImageURL:        nil,
 		DisplayName:     user.DisplayName.String,
 		SpotifyUserData: &spotifyData,
-	}, nil
+	}
+	if user.ImageUrl.Valid {
+		response.ImageURL = &user.ImageUrl.String
+	}
+	return response, nil
 }
 
 func buildUserProfile(user database.User) (models.UserProfile, error) {
@@ -73,15 +77,19 @@ func buildUserProfile(user database.User) (models.UserProfile, error) {
 	}
 
 	spotifyData := buildSpotifyPublicUser(spotifyUserData)
-	return models.UserProfile{
+	response = models.UserProfile{
 		ID:              user.ID,
 		CreatedAt:       user.CreatedAt.Time,
 		Username:        user.Username.String,
 		Email:           user.Email,
-		ImageURL:        user.ImageUrl.String,
+		ImageURL:        nil,
 		DisplayName:     user.DisplayName.String,
 		SpotifyUserData: &spotifyData,
-	}, nil
+	}
+	if user.ImageUrl.Valid {
+		response.ImageURL = &user.ImageUrl.String
+	}
+	return response, nil
 }
 
 func copyOutgoingRequeststoFriendRequest(row []database.ListOutgoingRequestsRow) ([]models.FriendRequest, error) {

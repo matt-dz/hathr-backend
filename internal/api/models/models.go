@@ -83,7 +83,7 @@ type PublicUser struct {
 	Username        string                    `json:"username"`
 	DisplayName     string                    `json:"display_name"`
 	CreatedAt       time.Time                 `json:"created_at"`
-	ImageURL        string                    `json:"image_url"`
+	ImageURL        *string                   `json:"image_url"`
 	SpotifyUserData *spotifyModels.PublicUser `json:"spotify_user_data"`
 }
 
@@ -92,8 +92,8 @@ type UserProfile struct {
 	Username        string                    `json:"username"`
 	DisplayName     string                    `json:"display_name"`
 	Email           string                    `json:"email"`
-	ImageURL        string                    `json:"image_url"`
 	CreatedAt       time.Time                 `json:"created_at"`
+	ImageURL        *string                   `json:"image_url"`
 	SpotifyUserData *spotifyModels.PublicUser `json:"spotify_user_data"`
 }
 

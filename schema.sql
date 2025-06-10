@@ -13,13 +13,23 @@ CREATE TABLE users (
     email TEXT NOT NULL,
     registered_at TIMESTAMP,
     role role NOT NULL DEFAULT 'user',
+    password TEXT,
 
-    spotify_user_id TEXT NOT NULL UNIQUE,
-    spotify_user_data JSONB NOT NULL,
+    spotify_user_id TEXT UNIQUE,
+    spotify_user_data JSONB,
 
     created_at TIMESTAMP NOT NULL DEFAULT now (),
     refresh_token UUID NOT NULL DEFAULT gen_random_uuid (),
     refresh_expires_at TIMESTAMP NOT NULL DEFAULT (now() + INTERVAL '1 year'),
+
+    CONSTRAINT valid_admin CHECK (
+        (role = 'admin' AND password IS NOT NULL AND registered_at IS NOT NULL)
+        OR (role = 'user')
+    ),
+    CONSTRAINT valid_spotify_user CHECK (
+        (spotify_user_id IS NOT NULL AND spotify_user_data IS NOT NULL)
+        OR (spotify_user_id IS NULL AND spotify_user_data IS NULL)
+    ),
 
     PRIMARY KEY (id)
 );

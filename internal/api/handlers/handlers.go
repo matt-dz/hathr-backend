@@ -4,6 +4,7 @@ package handlers
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"hathr-backend/internal/api/models"
 	"hathr-backend/internal/api/models/requests"
 	"hathr-backend/internal/api/models/responses"
+	"hathr-backend/internal/argon2id"
 	"hathr-backend/internal/database"
 	hathrEnv "hathr-backend/internal/env"
 	hathrJson "hathr-backend/internal/json"
@@ -140,11 +142,11 @@ func copyRequeststoFriendRequest(row []database.ListRequestsRow) ([]models.Frien
 	return response, nil
 }
 
-func buildJWT(user database.User, key string) (string, error) {
+func buildJWT(userID uuid.UUID, role database.Role, registered bool, key string) (string, error) {
 	return hathrJWT.CreateJWT(hathrJWT.JWTParams{
-		UserID:     user.ID.String(),
-		Role:       string(user.Role),
-		Registered: user.RegisteredAt.Valid,
+		UserID:     userID.String(),
+		Role:       string(role),
+		Registered: registered,
 	}, []byte(key))
 }
 
@@ -232,6 +234,106 @@ func ServeSpotifyOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func AdminLogin(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Decode request payload
+	env.Logger.DebugContext(ctx, "Decoding request body")
+	var loginRequest requests.AdminLogin
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	err := hathrJson.DecodeJson(&loginRequest, decoder)
+	defer r.Body.Close()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	// Validate payload
+	env.Logger.DebugContext(ctx, "Validating request body")
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	if err := validate.Struct(loginRequest); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	// Login admin
+	env.DebugContext(ctx, "Retrieving user from DB")
+	user, err := env.Database.GetAdminUser(ctx,
+		pgtype.Text{
+			String: loginRequest.Username,
+			Valid:  true,
+		})
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.ErrorContext(ctx, "Unable to get user. Invalid credentials", slog.Any("error", err))
+		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid credentials")
+		return
+	} else if err != nil {
+		env.ErrorContext(ctx, "Failed to login admin", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Decode password hash
+	env.DebugContext(ctx, "Decoding password hash")
+	argonParams, salt, trueHash, err := argon2id.DecodeHash(user.Password.String)
+	if err != nil {
+		env.ErrorContext(ctx, "Failed to decode password hash", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Hash given password
+	env.DebugContext(ctx, "Hashing given password")
+	givenHash := argon2id.HashWithSalt(loginRequest.Password, *argonParams, salt)
+
+	// Compare hashes
+	env.DebugContext(ctx, "Comparing hashes")
+	if subtle.ConstantTimeCompare(givenHash, trueHash) == 0 {
+		env.ErrorContext(ctx, "Invalid credentials", slog.String("username", loginRequest.Username))
+		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid credentials")
+		return
+	}
+	env.DebugContext(ctx, "Successfully logged in admin")
+
+	// Retrieve private key for JWT signing
+	env.Logger.DebugContext(ctx, "Retrieving private key")
+	key, err := env.Database.GetLatestPrivateKey(ctx)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to retrieve private key", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Create JWT for user
+	env.Logger.DebugContext(ctx, "Creating JWT")
+	signedJWT, err := buildJWT(user.ID, user.Role, user.RegisteredAt.Valid, key.Value)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Return JWT
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Add("Authorization", fmt.Sprintf("Bearer %s", signedJWT))
+	err = json.NewEncoder(w).Encode(responses.LoginUser{
+		RefreshToken: user.RefreshToken,
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+}
+
 func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
@@ -292,7 +394,10 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 
 	env.Logger.DebugContext(ctx, "Inserting user into database")
 	dbUser, err := env.Database.CreateSpotifyUser(ctx, database.CreateSpotifyUserParams{
-		SpotifyUserID:   spotifyUser.ID,
+		SpotifyUserID: pgtype.Text{
+			String: spotifyUser.ID,
+			Valid:  true,
+		},
 		Email:           spotifyUser.Email,
 		SpotifyUserData: marshaledUser,
 	})
@@ -351,7 +456,7 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT for user
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	signedJWT, err := buildJWT(dbUser, key.Value)
+	signedJWT, err := buildJWT(dbUser.ID, dbUser.Role, dbUser.RegisteredAt.Valid, key.Value)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -481,7 +586,7 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT for user
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	signedJWT, err := buildJWT(dbUser, key.Value)
+	signedJWT, err := buildJWT(dbUser.ID, dbUser.Role, dbUser.RegisteredAt.Valid, key.Value)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -563,7 +668,7 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	accessToken, err := buildJWT(user, key.Value)
+	accessToken, err := buildJWT(user.ID, user.Role, user.RegisteredAt.Valid, key.Value)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

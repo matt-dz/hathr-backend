@@ -225,7 +225,8 @@ type User struct {
 	Email            string           `json:"email"`
 	RegisteredAt     pgtype.Timestamp `json:"registered_at"`
 	Role             Role             `json:"role"`
-	SpotifyUserID    string           `json:"spotify_user_id"`
+	Password         pgtype.Text      `json:"password"`
+	SpotifyUserID    pgtype.Text      `json:"spotify_user_id"`
 	SpotifyUserData  []byte           `json:"spotify_user_data"`
 	CreatedAt        pgtype.Timestamp `json:"created_at"`
 	RefreshToken     uuid.UUID        `json:"refresh_token"`

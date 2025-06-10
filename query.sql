@@ -268,3 +268,15 @@ SET
   email = COALESCE(sqlc.narg('email'), email)
 WHERE id = $3
 RETURNING *;
+
+-- name: CreateAdminUser :exec
+INSERT INTO users (username, password, email, role, registered_at)
+VALUES ($1, $2, $3, 'admin', now());
+
+-- name: GetAdminUser :one
+SELECT id, role, registered_at, refresh_token, password
+FROM users
+WHERE
+    username = $1
+    AND role = 'admin'
+    AND registered_at IS NOT NULL;

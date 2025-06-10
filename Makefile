@@ -30,6 +30,10 @@ docker-run:
 	@echo "🚀🐳  Starting docker image $(BINARY)..."
 	docker run --env-file .env -e JWKS_PATH=/app/jwks.json --mount type=bind,src=jwks.json,dst=/app/jwks.json,ro -p $(DOCKER_PORT):8080 $(BINARY)
 
+create-admin:
+	@echo "👤  Creating admin user..."
+	go run scripts/admin.go
+
 fmt:
 	@echo "🎨  Formatting code..."
 	gofmt -l -s -w .

@@ -250,6 +250,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	}).Methods("GET")
 
 	s.HandleFunc("/login/spotify", handlers.SpotifyLogin).Methods("POST", "OPTIONS")
+	s.HandleFunc("/login/admin", handlers.AdminLogin).Methods("POST", "OPTIONS")
 	s.HandleFunc("/refresh", handlers.RefreshSession).Methods("POST", "OPTIONS")
 
 	me := s.PathPrefix("/me").Subrouter()

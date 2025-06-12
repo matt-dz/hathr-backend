@@ -327,4 +327,8 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	users.HandleFunc("/{username}", handlers.GetUserByUsername).Methods("GET", "OPTIONS")
 	users.HandleFunc("/{username}/playlists", handlers.GetUserPlaylists).Methods("GET", "OPTIONS")
 	users.HandleFunc("/{username}/friends", handlers.GetUserFriends).Methods("GET", "OPTIONS")
+
+	users.Use(AuthorizeAdminRequest)
+	users.HandleFunc("/{id}/plays/spotify", handlers.UpdateSpotifyPlays).Methods("POST", "OPTIONS")
+
 }

@@ -122,3 +122,31 @@ CREATE TABLE spotify_tokens (
     FOREIGN KEY (user_id) REFERENCES users (spotify_user_id)
         ON DELETE CASCADE
 );
+
+CREATE TABLE spotify_plays (
+    user_id UUID NOT NULL,
+    track_id TEXT NOT NULL,
+    played_at TIMESTAMP NOT NULL,
+
+    PRIMARY KEY (user_id, track_id, played_at),
+    FOREIGN KEY (user_id) REFERENCES users (id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (track_id) REFERENCES spotify_tracks (id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX idx_spotify_plays_user_played_at
+  ON spotify_plays (user_id, played_at);
+
+CREATE TABLE spotify_tracks (
+    id TEXT NOT NULL,
+
+    name TEXT NOT NULL,
+    artists TEXT[] NOT NULL,
+    popularity INTEGER NOT NULL,
+    image_url TEXT,
+    raw JSONB NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (id)
+);

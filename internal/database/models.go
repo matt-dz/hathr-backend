@@ -209,12 +209,28 @@ type PrivateKey struct {
 	Value string `json:"value"`
 }
 
+type SpotifyPlay struct {
+	UserID   uuid.UUID        `json:"user_id"`
+	TrackID  string           `json:"track_id"`
+	PlayedAt pgtype.Timestamp `json:"played_at"`
+}
+
 type SpotifyToken struct {
 	UserID       string `json:"user_id"`
 	AccessToken  string `json:"access_token"`
 	TokenType    string `json:"token_type"`
 	Scope        string `json:"scope"`
 	RefreshToken string `json:"refresh_token"`
+}
+
+type SpotifyTrack struct {
+	ID         string           `json:"id"`
+	Name       string           `json:"name"`
+	Artists    []string         `json:"artists"`
+	Popularity int32            `json:"popularity"`
+	ImageUrl   pgtype.Text      `json:"image_url"`
+	Raw        []byte           `json:"raw"`
+	UpdatedAt  pgtype.Timestamp `json:"updated_at"`
 }
 
 type User struct {

@@ -1948,3 +1948,33 @@ func UpdatePersonalProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	userID := mux.Vars(r)["id"]
+
+	// Validate parameters
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID in route parameter", slog.Any("error", err))
+		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid user ID in route parameter")
+		return
+	}
+
+	// Retrieve spotify tokens
+	env.Logger.DebugContext(ctx, "Retrieving Spotify tokens from DB")
+	tokens, err := env.Database.GetSpotifyTokens(ctx, uuid.MustParse(userID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.Logger.ErrorContext(ctx, "Spotify tokens not found for user", slog.Any("error", err))
+		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Spotify tokens not found for user")
+		return
+	}
+}

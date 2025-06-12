@@ -126,6 +126,56 @@ func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPl
 	return id, err
 }
 
+const createSpotifyPlay = `-- name: CreateSpotifyPlay :exec
+INSERT INTO spotify_plays (user_id, track_id, played_at)
+VALUES ($1, $2, $3)
+ON CONFLICT DO NOTHING
+`
+
+type CreateSpotifyPlayParams struct {
+	UserID   uuid.UUID        `json:"user_id"`
+	TrackID  string           `json:"track_id"`
+	PlayedAt pgtype.Timestamp `json:"played_at"`
+}
+
+func (q *Queries) CreateSpotifyPlay(ctx context.Context, arg CreateSpotifyPlayParams) error {
+	_, err := q.db.Exec(ctx, createSpotifyPlay, arg.UserID, arg.TrackID, arg.PlayedAt)
+	return err
+}
+
+const createSpotifyTrack = `-- name: CreateSpotifyTrack :exec
+INSERT INTO spotify_tracks (id, name, artists, popularity, image_url, raw)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (id) DO UPDATE
+    SET name = EXCLUDED.name,
+        artists = EXCLUDED.artists,
+        popularity = EXCLUDED.popularity,
+        image_url = EXCLUDED.image_url,
+        raw = EXCLUDED.raw,
+        updated_at = now()
+`
+
+type CreateSpotifyTrackParams struct {
+	ID         string      `json:"id"`
+	Name       string      `json:"name"`
+	Artists    []string    `json:"artists"`
+	Popularity int32       `json:"popularity"`
+	ImageUrl   pgtype.Text `json:"image_url"`
+	Raw        []byte      `json:"raw"`
+}
+
+func (q *Queries) CreateSpotifyTrack(ctx context.Context, arg CreateSpotifyTrackParams) error {
+	_, err := q.db.Exec(ctx, createSpotifyTrack,
+		arg.ID,
+		arg.Name,
+		arg.Artists,
+		arg.Popularity,
+		arg.ImageUrl,
+		arg.Raw,
+	)
+	return err
+}
+
 const createSpotifyUser = `-- name: CreateSpotifyUser :one
 INSERT INTO users (spotify_user_id, email, spotify_user_data)
 VALUES ($1, $2, $3)
@@ -447,10 +497,12 @@ func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) 
 }
 
 const getSpotifyTokens = `-- name: GetSpotifyTokens :one
-SELECT t.access_token, t.refresh_token
+SELECT
+    t.access_token,
+    t.refresh_token
 FROM users u
 JOIN spotify_tokens t
-  ON u.spotify_user_id = t.user_id
+    ON u.spotify_user_id = t.user_id
 WHERE u.id = $1
 `
 
@@ -464,6 +516,71 @@ func (q *Queries) GetSpotifyTokens(ctx context.Context, id uuid.UUID) (GetSpotif
 	var i GetSpotifyTokensRow
 	err := row.Scan(&i.AccessToken, &i.RefreshToken)
 	return i, err
+}
+
+const getTopSpotifyTracks = `-- name: GetTopSpotifyTracks :many
+SELECT
+    p.track_id,
+    t.name,
+    t.artists,
+    t.image_url,
+    COUNT (*) AS plays
+FROM spotify_plays p
+JOIN spotify_tracks t ON p.track_id = t.id
+WHERE
+    p.user_id = $2::UUID
+    AND p.played_at >= $3::TIMESTAMP
+    AND p.played_at < $4::TIMESTAMP
+GROUP BY
+    p.track_id, t.name, t.artists, t.image_url
+ORDER BY plays DESC
+LIMIT $1
+`
+
+type GetTopSpotifyTracksParams struct {
+	Limit     int32            `json:"limit"`
+	UserID    uuid.UUID        `json:"user_id"`
+	StartTime pgtype.Timestamp `json:"start_time"`
+	EndTime   pgtype.Timestamp `json:"end_time"`
+}
+
+type GetTopSpotifyTracksRow struct {
+	TrackID  string      `json:"track_id"`
+	Name     string      `json:"name"`
+	Artists  []string    `json:"artists"`
+	ImageUrl pgtype.Text `json:"image_url"`
+	Plays    int64       `json:"plays"`
+}
+
+func (q *Queries) GetTopSpotifyTracks(ctx context.Context, arg GetTopSpotifyTracksParams) ([]GetTopSpotifyTracksRow, error) {
+	rows, err := q.db.Query(ctx, getTopSpotifyTracks,
+		arg.Limit,
+		arg.UserID,
+		arg.StartTime,
+		arg.EndTime,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTopSpotifyTracksRow
+	for rows.Next() {
+		var i GetTopSpotifyTracksRow
+		if err := rows.Scan(
+			&i.TrackID,
+			&i.Name,
+			&i.Artists,
+			&i.ImageUrl,
+			&i.Plays,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUserBySpotifyId = `-- name: GetUserBySpotifyId :one

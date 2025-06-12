@@ -280,3 +280,19 @@ WHERE
     username = $1
     AND role = 'admin'
     AND registered_at IS NOT NULL;
+
+
+-- name: GetSpotifyTokens :one
+SELECT t.access_token, t.refresh_token
+FROM users u
+JOIN spotify_tokens t
+  ON u.spotify_user_id = t.user_id
+WHERE u.id = $1;
+
+-- name: UpdateSpotifyTokens :exec
+UPDATE spotify_tokens
+SET
+  access_token = $1,
+  refresh_token = $2,
+  scope = $3
+WHERE user_id = $4;

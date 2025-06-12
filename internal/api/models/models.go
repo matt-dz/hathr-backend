@@ -37,6 +37,19 @@ func (m Month) Validate() error {
 	return nil
 }
 
+type Provider string
+
+const (
+	ProviderSpotify Provider = "spotify"
+)
+
+func (p Provider) Validate() error {
+	if p != ProviderSpotify {
+		return fmt.Errorf("Invalid provider: %s", p)
+	}
+	return nil
+}
+
 func (m Month) Index() int {
 	return slices.Index(months[:], Month(strings.ToLower(string(m))))
 }

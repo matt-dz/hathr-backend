@@ -681,8 +681,31 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateMonthlyPlaylist(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	// ctx := r.Context()
+	// env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	// if !ok {
+	// 	env = hathrEnv.Null()
+	// }
+
+	// // Decode request payload
+	// var request requests.CreateMonthlyPlaylist
+	// decoder := json.NewDecoder(r.Body)
+	// decoder.DisallowUnknownFields()
+	// if err := hathrJson.DecodeJson(&request, decoder); err != nil {
+	// 	env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+	// 	http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	// 	return
+	// }
+
+	// tokens, err := env.Database.GetSpotifyTokens(ctx, request.UserID)
+	// if errors.Is(err, pgx.ErrNoRows) {
+	// 	env.Logger.ErrorContext(ctx, "No Spotify tokens found for user", slog.Any("error", err))
+	// 	writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Spotify tokens not found for user")
+	// } else if err != nil {
+	// 	env.Logger.ErrorContext(ctx, "Failed to get Spotify tokens", slog.Any("error", err))
+	// 	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	// 	return
+	// }
 }
 
 func GetPersonalPlaylists(w http.ResponseWriter, r *http.Request) {

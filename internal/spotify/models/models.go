@@ -73,3 +73,84 @@ type PlaylistWithoutTracks struct {
 	Week       *int      `json:"week"`
 	Month      *int      `json:"month"`
 }
+
+type Artist struct {
+	ExternalURLs ExternalURLs `json:"external_urls"`
+	Followers    Followers    `json:"followers"`
+	Genres       []string     `json:"genres"`
+	Href         string       `json:"href"`
+	ID           string       `json:"id"`
+	Images       []Image      `json:"images"`
+	Name         string       `json:"name"`
+	Popularity   int          `json:"popularity"`
+	Type         string       `json:"type"`
+	URI          string       `json:"uri"`
+}
+
+type SimplifiedArtist struct {
+	ExternalURLs ExternalURLs `json:"external_urls"`
+	Href         string       `json:"href"`
+	ID           string       `json:"id"`
+	Name         string       `json:"name"`
+	Type         string       `json:"type"`
+	URI          string       `json:"uri"`
+}
+
+type RefreshTokenRequest struct {
+	GrantType    string `json:"grant_type"`
+	RefreshToken string `json:"refresh_token"`
+	ClientID     string `json:"client_id"`
+}
+
+type RefreshTokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	Scope        string `json:"scope"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+type TopArtistsResponse struct {
+	Href     string   `json:"href"`
+	Limit    int      `json:"limit"`
+	Next     string   `json:"next"`
+	Offset   int      `json:"offset"`
+	Previous string   `json:"previous"`
+	Total    int      `json:"total"`
+	Items    []Artist `json:"items"`
+}
+
+type Restrictions struct {
+	Reason string `json:"reason"`
+}
+
+type Album struct {
+	AlbumType            string             `json:"album_type"`
+	TotalTracks          int                `json:"total_tracks"`
+	AvailableMarkets     []string           `json:"available_markets"`
+	ExternalURLs         ExternalURLs       `json:"external_urls"`
+	Href                 string             `json:"href"`
+	ID                   string             `json:"id"`
+	Images               []Image            `json:"images"`
+	Name                 string             `json:"name"`
+	ReleaseDate          string             `json:"release_date"`
+	ReleaseDatePrecision string             `json:"release_date_precision"`
+	Restrictions         Restrictions       `json:"restrictions"`
+	Type                 string             `json:"type"`
+	URI                  string             `json:"uri"`
+	Artists              []SimplifiedArtist `json:"artists"`
+}
+
+type Track struct {
+	Album
+}
+
+type TopTracksResponse struct {
+	Href     string  `json:"href"`
+	Limit    int     `json:"limit"`
+	Next     string  `json:"next"`
+	Offset   int     `json:"offset"`
+	Previous string  `json:"previous"`
+	Total    int     `json:"total"`
+	Items    []Track `json:"items"`
+}

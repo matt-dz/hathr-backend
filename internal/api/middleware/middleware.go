@@ -159,6 +159,37 @@ func AuthorizeRequest(next http.Handler) http.Handler {
 	})
 }
 
+func AuthorizeUserRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+		if !ok {
+			env = hathrEnv.Null()
+		}
+
+		authToken := r.Header.Get("Authorization")
+		rawJWT, found := strings.CutPrefix(authToken, "Bearer ")
+		if !found {
+			http.Error(w, "Auth token should be formatted as \"Bearer [token]\"", http.StatusUnauthorized)
+		}
+
+		env.Logger.DebugContext(r.Context(), "Validating JWT")
+		token, err := hathrJwt.ValidateJWT(rawJWT)
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			env.Logger.ErrorContext(r.Context(), "JWT expired", slog.Any("error", err))
+			http.Error(w, "Access token expired", http.StatusUnauthorized)
+			return
+		} else if err != nil {
+			env.Logger.ErrorContext(r.Context(), "Invalid JWT", slog.Any("error", err))
+			http.Error(w, "Invalid JWT", http.StatusUnauthorized)
+			return
+		}
+
+		env.Logger.DebugContext(r.Context(), "Successfully validated JWT")
+		r = r.WithContext(context.WithValue(r.Context(), "jwt", token))
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Ensures admin claim is present and true in JWT
 func AuthorizeAdminRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -182,13 +213,14 @@ func AuthorizeAdminRequest(next http.Handler) http.Handler {
 			return
 		}
 
-		isAdmin, ok := mapClaims["admin"].(bool)
+		role, ok := mapClaims["role"].(string)
 		if !ok {
-			env.Logger.ErrorContext(r.Context(), "Failed to get admin claim")
+			env.Logger.ErrorContext(r.Context(), "Failed to get role claim")
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
 		}
-		if !isAdmin {
+
+		if role != "admin" {
 			env.Logger.ErrorContext(r.Context(), "User is not an admin")
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
@@ -269,10 +301,10 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	playlists.HandleFunc("/{id}", handlers.GetPlaylist).Methods("GET", "OPTIONS")
 	playlists.HandleFunc("/{id}", handlers.UpdateVisibility).Methods("PATCH", "OPTIONS")
 
-	playlist := s.PathPrefix("/playlist").Subrouter()
-	playlist.Use(AuthorizeRequest)
-	playlist.Use(AuthorizeAdminRequest)
-	playlist.HandleFunc("/", handlers.CreateMonthlyPlaylist).Methods("POST", "OPTIONS")
+	admin := s.PathPrefix("").Subrouter()
+	admin.Use(AuthorizeRequest)
+	admin.Use(AuthorizeAdminRequest)
+	admin.HandleFunc("/playlist/monthly", handlers.CreateMonthlyPlaylist).Methods("POST", "OPTIONS")
 
 	friendships := s.PathPrefix("/friendships").Subrouter()
 	friendships.Use(AuthorizeRequest)

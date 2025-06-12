@@ -446,6 +446,26 @@ func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) 
 	return value, err
 }
 
+const getSpotifyTokens = `-- name: GetSpotifyTokens :one
+SELECT t.access_token, t.refresh_token
+FROM users u
+JOIN spotify_tokens t
+  ON u.spotify_user_id = t.user_id
+WHERE u.id = $1
+`
+
+type GetSpotifyTokensRow struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+func (q *Queries) GetSpotifyTokens(ctx context.Context, id uuid.UUID) (GetSpotifyTokensRow, error) {
+	row := q.db.QueryRow(ctx, getSpotifyTokens, id)
+	var i GetSpotifyTokensRow
+	err := row.Scan(&i.AccessToken, &i.RefreshToken)
+	return i, err
+}
+
 const getUserBySpotifyId = `-- name: GetUserBySpotifyId :one
 SELECT id, display_name, username, image_url, email, registered_at, role, password, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE spotify_user_id = $1
 `
@@ -990,6 +1010,32 @@ func (q *Queries) SignUpUser(ctx context.Context, arg SignUpUserParams) (User, e
 		&i.RefreshExpiresAt,
 	)
 	return i, err
+}
+
+const updateSpotifyTokens = `-- name: UpdateSpotifyTokens :exec
+UPDATE spotify_tokens
+SET
+  access_token = $1,
+  refresh_token = $2,
+  scope = $3
+WHERE user_id = $4
+`
+
+type UpdateSpotifyTokensParams struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	Scope        string `json:"scope"`
+	UserID       string `json:"user_id"`
+}
+
+func (q *Queries) UpdateSpotifyTokens(ctx context.Context, arg UpdateSpotifyTokensParams) error {
+	_, err := q.db.Exec(ctx, updateSpotifyTokens,
+		arg.AccessToken,
+		arg.RefreshToken,
+		arg.Scope,
+		arg.UserID,
+	)
+	return err
 }
 
 const updateUserImage = `-- name: UpdateUserImage :execrows

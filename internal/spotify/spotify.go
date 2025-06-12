@@ -18,6 +18,7 @@ import (
 	hathrEnv "hathr-backend/internal/env"
 	hathrJson "hathr-backend/internal/json"
 	spotifyErrors "hathr-backend/internal/spotify/errors"
+	"hathr-backend/internal/spotify/models"
 	spotifyModels "hathr-backend/internal/spotify/models"
 
 	"github.com/hashicorp/go-retryablehttp"
@@ -150,4 +151,65 @@ func GetUserProfile(bearerToken string, env *hathrEnv.Env, ctx context.Context) 
 	}
 
 	return user, nil
+}
+
+func RefreshToken(refreshToken string, env *hathrEnv.Env, ctx context.Context) (models.RefreshTokenResponse, error) {
+
+	// Retrieve environment variables
+	var refreshTokenResponse models.RefreshTokenResponse
+	clientID := os.Getenv("SPOTIFY_CLIENT_ID")
+	if clientID == "" {
+		env.Logger.ErrorContext(ctx, "SPOTIFY_CLIENT_ID not set")
+		return refreshTokenResponse, fmt.Errorf("SPOTIFY_CLIENT_ID not set")
+	}
+	clientSecret := os.Getenv("SPOTIFY_CLIENT_SECRET")
+	if clientSecret == "" {
+		env.Logger.ErrorContext(ctx, "SPOTIFY_CLIENT_SECRET not set")
+		return refreshTokenResponse, fmt.Errorf("SPOTIFY_CLIENT_SECRET not set")
+	}
+
+	// Create request
+	env.Logger.DebugContext(ctx, "Create spotify refresh token request")
+	data := url.Values{}
+	data.Set("grant_type", "refresh_token")
+	data.Set("refresh_token", refreshToken)
+	req, err := retryablehttp.NewRequest(http.MethodPost, spotifyAuthURL+"api/token", strings.NewReader(data.Encode()))
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Error creating request", slog.Any("error", err))
+		return refreshTokenResponse, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	// Send request
+	env.Logger.DebugContext(ctx, "Sending request", slog.Any("req", req.RequestURI))
+	client := retryablehttp.NewClient()
+	client.RetryWaitMax = time.Second * 10
+	client.Logger = env.Logger
+	res, err := client.Do(req)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to send request", slog.Any("error", err))
+		return refreshTokenResponse, err
+	}
+
+	// If unsuccessful, return error
+	if res.StatusCode != http.StatusOK {
+		env.Logger.ErrorContext(ctx, "Unsuccessful request", slog.Any("res", res))
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to read body", slog.Any("error", err))
+		}
+		env.Logger.ErrorContext(ctx, "decoded body", slog.String("status", res.Status), slog.String("body", string(body)))
+		return refreshTokenResponse, &spotifyErrors.SpotifyError{StatusCode: res.StatusCode, Status: res.Status, Message: string(body)}
+	}
+
+	// Decode response
+	env.Logger.DebugContext(ctx, "Decoding spotify")
+	decoder := json.NewDecoder(res.Body)
+	decoder.DisallowUnknownFields()
+	if err := hathrJson.DecodeJson(&refreshTokenResponse, decoder); err != nil {
+		env.Logger.ErrorContext(ctx, "Error decoding response", slog.Any("error", err))
+		return refreshTokenResponse, err
+	}
+
+	return refreshTokenResponse, nil
 }

@@ -46,7 +46,7 @@ func main() {
 		panic(err)
 	}
 
-	env := hathrEnv.NewEnvironment(logger, &database.Database{Queries: database.New(pool)})
+	env := hathrEnv.NewEnvironment(logger, database.NewDatabase(pool))
 	defer env.Database.Close()
 
 	// Create HTTP Handler

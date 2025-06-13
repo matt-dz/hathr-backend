@@ -11,16 +11,16 @@ CREATE TABLE users (
     username TEXT UNIQUE,
     image_url TEXT,
     email TEXT NOT NULL,
-    registered_at TIMESTAMP,
+    registered_at TIMESTAMPTZ,
     role role NOT NULL DEFAULT 'user',
     password TEXT,
 
     spotify_user_id TEXT UNIQUE,
     spotify_user_data JSONB,
 
-    created_at TIMESTAMP NOT NULL DEFAULT now (),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now (),
     refresh_token UUID NOT NULL DEFAULT gen_random_uuid (),
-    refresh_expires_at TIMESTAMP NOT NULL DEFAULT (now() + INTERVAL '1 year'),
+    refresh_expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '1 year'),
 
     CONSTRAINT valid_admin CHECK (
         (role = 'admin' AND password IS NOT NULL AND registered_at IS NOT NULL)
@@ -50,8 +50,8 @@ CREATE TABLE friendships (
     requester_id UUID NOT NULL,
 
     status friendship_status NOT NULL DEFAULT 'pending',
-    requested_at TIMESTAMP NOT NULL DEFAULT now(),
-    responded_at TIMESTAMP,
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    responded_at TIMESTAMPTZ,
     PRIMARY KEY (user_a_id, user_b_id),
 
     -- enforce a single row per pair, no matter who is “first”
@@ -117,7 +117,7 @@ CREATE TABLE spotify_tokens (
     token_type TEXT NOT NULL,
     scope TEXT NOT NULL,
     refresh_token TEXT NOT NULL,
-    token_expires TIMESTAMP NOT NULL,
+    token_expires TIMESTAMPTZ NOT NULL,
 
     PRIMARY KEY(user_id),
     FOREIGN KEY (user_id) REFERENCES users (spotify_user_id)
@@ -132,7 +132,7 @@ CREATE TABLE spotify_tracks (
     popularity INTEGER NOT NULL,
     image_url TEXT,
     raw JSONB NOT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id)
 );
@@ -140,7 +140,7 @@ CREATE TABLE spotify_tracks (
 CREATE TABLE spotify_plays (
     user_id UUID NOT NULL,
     track_id TEXT NOT NULL,
-    played_at TIMESTAMP NOT NULL,
+    played_at TIMESTAMPTZ NOT NULL,
 
     PRIMARY KEY (user_id, track_id, played_at),
     FOREIGN KEY (user_id) REFERENCES users (id)

@@ -183,12 +183,12 @@ func (ns NullRole) Value() (driver.Value, error) {
 }
 
 type Friendship struct {
-	UserAID     uuid.UUID        `json:"user_a_id"`
-	UserBID     uuid.UUID        `json:"user_b_id"`
-	RequesterID uuid.UUID        `json:"requester_id"`
-	Status      FriendshipStatus `json:"status"`
-	RequestedAt pgtype.Timestamp `json:"requested_at"`
-	RespondedAt pgtype.Timestamp `json:"responded_at"`
+	UserAID     uuid.UUID          `json:"user_a_id"`
+	UserBID     uuid.UUID          `json:"user_b_id"`
+	RequesterID uuid.UUID          `json:"requester_id"`
+	Status      FriendshipStatus   `json:"status"`
+	RequestedAt pgtype.Timestamptz `json:"requested_at"`
+	RespondedAt pgtype.Timestamptz `json:"responded_at"`
 }
 
 type Playlist struct {
@@ -210,42 +210,42 @@ type PrivateKey struct {
 }
 
 type SpotifyPlay struct {
-	UserID   uuid.UUID        `json:"user_id"`
-	TrackID  string           `json:"track_id"`
-	PlayedAt pgtype.Timestamp `json:"played_at"`
+	UserID   uuid.UUID          `json:"user_id"`
+	TrackID  string             `json:"track_id"`
+	PlayedAt pgtype.Timestamptz `json:"played_at"`
 }
 
 type SpotifyToken struct {
-	UserID       string           `json:"user_id"`
-	AccessToken  string           `json:"access_token"`
-	TokenType    string           `json:"token_type"`
-	Scope        string           `json:"scope"`
-	RefreshToken string           `json:"refresh_token"`
-	TokenExpires pgtype.Timestamp `json:"token_expires"`
+	UserID       string             `json:"user_id"`
+	AccessToken  string             `json:"access_token"`
+	TokenType    string             `json:"token_type"`
+	Scope        string             `json:"scope"`
+	RefreshToken string             `json:"refresh_token"`
+	TokenExpires pgtype.Timestamptz `json:"token_expires"`
 }
 
 type SpotifyTrack struct {
-	ID         string           `json:"id"`
-	Name       string           `json:"name"`
-	Artists    []string         `json:"artists"`
-	Popularity int32            `json:"popularity"`
-	ImageUrl   pgtype.Text      `json:"image_url"`
-	Raw        []byte           `json:"raw"`
-	UpdatedAt  pgtype.Timestamp `json:"updated_at"`
+	ID         string             `json:"id"`
+	Name       string             `json:"name"`
+	Artists    []string           `json:"artists"`
+	Popularity int32              `json:"popularity"`
+	ImageUrl   pgtype.Text        `json:"image_url"`
+	Raw        []byte             `json:"raw"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type User struct {
-	ID               uuid.UUID        `json:"id"`
-	DisplayName      pgtype.Text      `json:"display_name"`
-	Username         pgtype.Text      `json:"username"`
-	ImageUrl         pgtype.Text      `json:"image_url"`
-	Email            string           `json:"email"`
-	RegisteredAt     pgtype.Timestamp `json:"registered_at"`
-	Role             Role             `json:"role"`
-	Password         pgtype.Text      `json:"password"`
-	SpotifyUserID    pgtype.Text      `json:"spotify_user_id"`
-	SpotifyUserData  []byte           `json:"spotify_user_data"`
-	CreatedAt        pgtype.Timestamp `json:"created_at"`
-	RefreshToken     uuid.UUID        `json:"refresh_token"`
-	RefreshExpiresAt pgtype.Timestamp `json:"refresh_expires_at"`
+	ID               uuid.UUID          `json:"id"`
+	DisplayName      pgtype.Text        `json:"display_name"`
+	Username         pgtype.Text        `json:"username"`
+	ImageUrl         pgtype.Text        `json:"image_url"`
+	Email            string             `json:"email"`
+	RegisteredAt     pgtype.Timestamptz `json:"registered_at"`
+	Role             Role               `json:"role"`
+	Password         pgtype.Text        `json:"password"`
+	SpotifyUserID    pgtype.Text        `json:"spotify_user_id"`
+	SpotifyUserData  []byte             `json:"spotify_user_data"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	RefreshToken     uuid.UUID          `json:"refresh_token"`
+	RefreshExpiresAt pgtype.Timestamptz `json:"refresh_expires_at"`
 }

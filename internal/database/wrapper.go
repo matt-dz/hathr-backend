@@ -4,20 +4,33 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-var queries *Queries
-var connection *pgx.Conn
 
 type Database struct {
 	*Queries
-	Conn *pgx.Conn
+	pool *pgxpool.Pool
 }
 
-func (db *Database) Close() error {
+func NewDatabase(pool *pgxpool.Pool) *Database {
+	return &Database{
+		Queries: New(pool),
+		pool:    pool,
+	}
+}
+
+func (db *Database) Close() {
 	if db == nil {
-		return nil
+		return
 	}
 
-	return db.Conn.Close(context.Background())
+	db.pool.Close()
+}
+
+func (db *Database) Begin(ctx context.Context) (pgx.Tx, error) {
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return tx, nil
 }

@@ -216,15 +216,16 @@ func extractLargestImage(images []spotifyModels.Image) string {
 }
 
 func retrieveSpotifyToken(id uuid.UUID, env *hathrEnv.Env, ctx context.Context) (string, error) {
-	tx, err := env.Database.Conn.Begin(ctx)
+	tx, err := env.Database.Begin(ctx)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to begin transaction", slog.Any("error", err))
 		return "", err
 	}
 	defer tx.Rollback(ctx)
+	qx := env.Database.WithTx(tx)
 
 	env.Logger.DebugContext(ctx, "Retrieving spotify tokens")
-	tokens, err := env.Database.GetSpotifyTokens(ctx, id)
+	tokens, err := qx.GetSpotifyTokens(ctx, id)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to retrieve spotify tokens", slog.Any("error", err))
 		return "", err
@@ -236,7 +237,7 @@ func retrieveSpotifyToken(id uuid.UUID, env *hathrEnv.Env, ctx context.Context) 
 	}
 
 	// Refresh token
-	env.Logger.DebugContext(ctx, "Refreshing access token")
+	env.Logger.DebugContext(ctx, "Refreshing access token", slog.Time("expires", tokens.TokenExpires.Time))
 	res, err := hathrSpotify.RefreshToken(tokens.RefreshToken, env, ctx)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to refresh spotify token", slog.Any("error", err))
@@ -250,11 +251,15 @@ func retrieveSpotifyToken(id uuid.UUID, env *hathrEnv.Env, ctx context.Context) 
 		Scope:        res.Scope,
 		ID:           id,
 		RefreshToken: tokens.RefreshToken,
+		TokenExpires: pgtype.Timestamptz{
+			Time:  time.Now().Add(time.Duration(res.ExpiresIn) * time.Second),
+			Valid: true,
+		},
 	}
 	if res.RefreshToken != nil {
 		params.RefreshToken = *res.RefreshToken
 	}
-	if err := env.Database.UpdateSpotifyTokens(ctx, params); err != nil {
+	if err := qx.UpdateSpotifyTokens(ctx, params); err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to update spotify tokens in DB", slog.Any("error", err))
 		return "", err
 	}
@@ -463,6 +468,10 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 		TokenType:    loginRes.TokenType,
 		Scope:        loginRes.Scope,
 		RefreshToken: loginRes.RefreshToken,
+		TokenExpires: pgtype.Timestamptz{
+			Time:  time.Now().Add(time.Duration(loginRes.ExpiresIn) * time.Second),
+			Valid: true,
+		},
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to upload credentials to DB", slog.Any("error", err))
@@ -2046,7 +2055,7 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve recent plays
 	env.Logger.DebugContext(ctx, "Retrieving recent plays from Spotify")
-	recentTracks, err := hathrSpotify.GetRecentlyPlayedTracks(accessToken, request.End, request.Start, env, ctx)
+	recentTracks, err := hathrSpotify.GetRecentlyPlayedTracks(accessToken, request.After, env, ctx)
 	var spotifyErr *spotifyErrors.SpotifyError
 	if errors.As(err, &spotifyErr) && spotifyErr.StatusCode == http.StatusUnauthorized {
 		env.Logger.ErrorContext(ctx, "Spotify rate limit exceeded", slog.Any("error", err))
@@ -2097,7 +2106,7 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 		err = env.Database.CreateSpotifyPlay(ctx, database.CreateSpotifyPlayParams{
 			UserID:  uuid.MustParse(userID),
 			TrackID: playHistory.Track.ID,
-			PlayedAt: pgtype.Timestamp{
+			PlayedAt: pgtype.Timestamptz{
 				Time:  playHistory.PlayedAt,
 				Valid: true,
 			},

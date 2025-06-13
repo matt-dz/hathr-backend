@@ -133,9 +133,9 @@ ON CONFLICT DO NOTHING
 `
 
 type CreateSpotifyPlayParams struct {
-	UserID   uuid.UUID        `json:"user_id"`
-	TrackID  string           `json:"track_id"`
-	PlayedAt pgtype.Timestamp `json:"played_at"`
+	UserID   uuid.UUID          `json:"user_id"`
+	TrackID  string             `json:"track_id"`
+	PlayedAt pgtype.Timestamptz `json:"played_at"`
 }
 
 func (q *Queries) CreateSpotifyPlay(ctx context.Context, arg CreateSpotifyPlayParams) error {
@@ -144,15 +144,15 @@ func (q *Queries) CreateSpotifyPlay(ctx context.Context, arg CreateSpotifyPlayPa
 }
 
 const createSpotifyTrack = `-- name: CreateSpotifyTrack :exec
-INSERT INTO spotify_tracks (id, name, artists, popularity, image_url, raw)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO spotify_tracks(id, name, artists, popularity, image_url, raw, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, NOW())
 ON CONFLICT (id) DO UPDATE
     SET name = EXCLUDED.name,
         artists = EXCLUDED.artists,
         popularity = EXCLUDED.popularity,
         image_url = EXCLUDED.image_url,
         raw = EXCLUDED.raw,
-        updated_at = now()
+        updated_at = EXCLUDED.updated_at
 `
 
 type CreateSpotifyTrackParams struct {
@@ -240,11 +240,11 @@ WHERE
 `
 
 type GetAdminUserRow struct {
-	ID           uuid.UUID        `json:"id"`
-	Role         Role             `json:"role"`
-	RegisteredAt pgtype.Timestamp `json:"registered_at"`
-	RefreshToken uuid.UUID        `json:"refresh_token"`
-	Password     pgtype.Text      `json:"password"`
+	ID           uuid.UUID          `json:"id"`
+	Role         Role               `json:"role"`
+	RegisteredAt pgtype.Timestamptz `json:"registered_at"`
+	RefreshToken uuid.UUID          `json:"refresh_token"`
+	Password     pgtype.Text        `json:"password"`
 }
 
 func (q *Queries) GetAdminUser(ctx context.Context, username pgtype.Text) (GetAdminUserRow, error) {
@@ -509,9 +509,9 @@ FOR UPDATE OF t
 `
 
 type GetSpotifyTokensRow struct {
-	AccessToken  string           `json:"access_token"`
-	RefreshToken string           `json:"refresh_token"`
-	TokenExpires pgtype.Timestamp `json:"token_expires"`
+	AccessToken  string             `json:"access_token"`
+	RefreshToken string             `json:"refresh_token"`
+	TokenExpires pgtype.Timestamptz `json:"token_expires"`
 }
 
 func (q *Queries) GetSpotifyTokens(ctx context.Context, id uuid.UUID) (GetSpotifyTokensRow, error) {
@@ -1054,8 +1054,8 @@ type SearchUsersRow struct {
 	UserBID     uuid.UUID            `json:"user_b_id"`
 	RequesterID uuid.UUID            `json:"requester_id"`
 	Status      NullFriendshipStatus `json:"status"`
-	RequestedAt pgtype.Timestamp     `json:"requested_at"`
-	RespondedAt pgtype.Timestamp     `json:"responded_at"`
+	RequestedAt pgtype.Timestamptz   `json:"requested_at"`
+	RespondedAt pgtype.Timestamptz   `json:"responded_at"`
 }
 
 func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]SearchUsersRow, error) {
@@ -1144,11 +1144,11 @@ WHERE u.id = $5
 `
 
 type UpdateSpotifyTokensParams struct {
-	AccessToken  string           `json:"access_token"`
-	RefreshToken string           `json:"refresh_token"`
-	Scope        string           `json:"scope"`
-	TokenExpires pgtype.Timestamp `json:"token_expires"`
-	ID           uuid.UUID        `json:"id"`
+	AccessToken  string             `json:"access_token"`
+	RefreshToken string             `json:"refresh_token"`
+	Scope        string             `json:"scope"`
+	TokenExpires pgtype.Timestamptz `json:"token_expires"`
+	ID           uuid.UUID          `json:"id"`
 }
 
 func (q *Queries) UpdateSpotifyTokens(ctx context.Context, arg UpdateSpotifyTokensParams) error {
@@ -1250,29 +1250,33 @@ INSERT INTO spotify_tokens (
   access_token,
   token_type,
   scope,
-  refresh_token
+  refresh_token,
+  token_expires
 )
 VALUES (
   $1,
   $2,
   $3,
   $4,
-  $5
+  $5,
+  $6
 )
 ON CONFLICT (user_id)
 DO UPDATE SET
   access_token   = EXCLUDED.access_token,
   token_type     = EXCLUDED.token_type,
   scope          = EXCLUDED.scope,
-  refresh_token  = EXCLUDED.refresh_token
+  refresh_token  = EXCLUDED.refresh_token,
+  token_expires = EXCLUDED.token_expires
 `
 
 type UpsertSpotifyCredentialsParams struct {
-	UserID       string `json:"user_id"`
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	Scope        string `json:"scope"`
-	RefreshToken string `json:"refresh_token"`
+	UserID       string             `json:"user_id"`
+	AccessToken  string             `json:"access_token"`
+	TokenType    string             `json:"token_type"`
+	Scope        string             `json:"scope"`
+	RefreshToken string             `json:"refresh_token"`
+	TokenExpires pgtype.Timestamptz `json:"token_expires"`
 }
 
 func (q *Queries) UpsertSpotifyCredentials(ctx context.Context, arg UpsertSpotifyCredentialsParams) error {
@@ -1282,6 +1286,7 @@ func (q *Queries) UpsertSpotifyCredentials(ctx context.Context, arg UpsertSpotif
 		arg.TokenType,
 		arg.Scope,
 		arg.RefreshToken,
+		arg.TokenExpires,
 	)
 	return err
 }

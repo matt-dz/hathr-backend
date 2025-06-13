@@ -173,6 +173,7 @@ func RefreshToken(refreshToken string, env *hathrEnv.Env, ctx context.Context) (
 	data := url.Values{}
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", refreshToken)
+	data.Set("client_id", clientID)
 	req, err := retryablehttp.NewRequest(http.MethodPost, spotifyAuthURL+"api/token", strings.NewReader(data.Encode()))
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error creating request", slog.Any("error", err))
@@ -201,9 +202,10 @@ func RefreshToken(refreshToken string, env *hathrEnv.Env, ctx context.Context) (
 		env.Logger.ErrorContext(ctx, "decoded body", slog.String("status", res.Status), slog.String("body", string(body)))
 		return refreshTokenResponse, &spotifyErrors.SpotifyError{StatusCode: res.StatusCode, Status: res.Status, Message: string(body)}
 	}
+	env.Logger.DebugContext(ctx, "Request successful", slog.Any("status", res.Status))
 
 	// Decode response
-	env.Logger.DebugContext(ctx, "Decoding spotify")
+	env.Logger.DebugContext(ctx, "Decoding request")
 	decoder := json.NewDecoder(res.Body)
 	decoder.DisallowUnknownFields()
 	if err := hathrJson.DecodeJson(&refreshTokenResponse, decoder); err != nil {
@@ -214,19 +216,19 @@ func RefreshToken(refreshToken string, env *hathrEnv.Env, ctx context.Context) (
 	return refreshTokenResponse, nil
 }
 
-func GetRecentlyPlayedTracks(accessToken string, before time.Time, after time.Time, env *hathrEnv.Env, ctx context.Context) (spotifyModels.RecentlyPlayedTracksResponse, error) {
+func GetRecentlyPlayedTracks(accessToken string, after time.Time, env *hathrEnv.Env, ctx context.Context) (spotifyModels.RecentlyPlayedTracksResponse, error) {
 
 	var response spotifyModels.RecentlyPlayedTracksResponse
 
 	// Create request
 	env.Logger.DebugContext(ctx, "Creating request")
-	url := fmt.Sprintf("%s/me/player/recently-played?limit=50&before=%d&after=%d", spotifyBaseURL, before.Unix(), after.Unix())
+	url := fmt.Sprintf("%s/me/player/recently-played?limit=50&after=%d", spotifyBaseURL, after.Unix())
 	req, err := retryablehttp.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error creating request", slog.Any("error", err))
 		return response, err
 	}
-	req.Header.Set("Authorization", accessToken)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
 
 	// Send request
 	env.Logger.DebugContext(ctx, "Sending request")

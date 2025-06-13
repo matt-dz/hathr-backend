@@ -83,21 +83,24 @@ INSERT INTO spotify_tokens (
   access_token,
   token_type,
   scope,
-  refresh_token
+  refresh_token,
+  token_expires
 )
 VALUES (
   $1,
   $2,
   $3,
   $4,
-  $5
+  $5,
+  $6
 )
 ON CONFLICT (user_id)
 DO UPDATE SET
   access_token   = EXCLUDED.access_token,
   token_type     = EXCLUDED.token_type,
   scope          = EXCLUDED.scope,
-  refresh_token  = EXCLUDED.refresh_token;
+  refresh_token  = EXCLUDED.refresh_token,
+  token_expires = EXCLUDED.token_expires;
 
 -- name: GetUserFromSession :one
 SELECT * FROM users WHERE refresh_token = $1;
@@ -292,15 +295,15 @@ FROM users u
 WHERE u.id = $5;
 
 -- name: CreateSpotifyTrack :exec
-INSERT INTO spotify_tracks (id, name, artists, popularity, image_url, raw)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO spotify_tracks(id, name, artists, popularity, image_url, raw, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, NOW())
 ON CONFLICT (id) DO UPDATE
     SET name = EXCLUDED.name,
         artists = EXCLUDED.artists,
         popularity = EXCLUDED.popularity,
         image_url = EXCLUDED.image_url,
         raw = EXCLUDED.raw,
-        updated_at = now();
+        updated_at = EXCLUDED.updated_at;
 
 -- name: CreateSpotifyPlay :exec
 INSERT INTO spotify_plays (user_id, track_id, played_at)

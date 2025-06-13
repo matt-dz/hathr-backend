@@ -11,7 +11,7 @@ var connection *pgx.Conn
 
 type Database struct {
 	*Queries
-	connection *pgx.Conn
+	Conn *pgx.Conn
 }
 
 func (db *Database) Close() error {
@@ -19,5 +19,5 @@ func (db *Database) Close() error {
 		return nil
 	}
 
-	return db.connection.Close(context.Background())
+	return db.Conn.Close(context.Background())
 }

@@ -103,11 +103,11 @@ type RefreshTokenRequest struct {
 }
 
 type RefreshTokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	Scope        string `json:"scope"`
-	ExpiresIn    int    `json:"expires_in"`
-	RefreshToken string `json:"refresh_token"`
+	AccessToken  string  `json:"access_token"`
+	TokenType    string  `json:"token_type"`
+	Scope        string  `json:"scope"`
+	ExpiresIn    int     `json:"expires_in"`
+	RefreshToken *string `json:"refresh_token"`
 }
 
 type TopArtistsResponse struct {
@@ -141,16 +141,67 @@ type Album struct {
 	Artists              []SimplifiedArtist `json:"artists"`
 }
 
+type ExternalIDs struct {
+	Isrc string `json:"isrc"`
+	Ean  string `json:"ean"`
+	Upc  string `json:"upc"`
+}
+
 type Track struct {
-	Album
+	Album            Album              `json:"album"`
+	Artists          []SimplifiedArtist `json:"artists"`
+	AvailableMarkets []string           `json:"available_markets"`
+	DiscNumber       int                `json:"disc_number"`
+	DurationMs       int                `json:"duration_ms"`
+	Explicit         bool               `json:"explicit"`
+	ExternalIDs      ExternalIDs        `json:"external_ids"`
+	ExternalURLs     ExternalURLs       `json:"external_urls"`
+	ID               string             `json:"id"`
+	IsPlayable       bool               `json:"is_playable"`
+	Restrictions     Restrictions       `json:"restrictions"`
+	Name             string             `json:"name"`
+	Popularity       int8               `json:"popularity"`
+	PreviewURL       *string            `json:"preview_url"`
+	TrackNumber      int                `json:"track_number"`
+	Type             string             `json:"type"`
+	URI              string             `json:"uri"`
+	IsLocal          bool               `json:"is_local"`
 }
 
 type TopTracksResponse struct {
 	Href     string  `json:"href"`
 	Limit    int     `json:"limit"`
-	Next     string  `json:"next"`
+	Next     *string `json:"next"`
 	Offset   int     `json:"offset"`
 	Previous string  `json:"previous"`
 	Total    int     `json:"total"`
 	Items    []Track `json:"items"`
+}
+
+type Cursors struct {
+	After  string `json:"after"`
+	Before string `json:"before"`
+}
+
+type PlayHistory struct {
+	Track    Track     `json:"track"`
+	PlayedAt time.Time `json:"played_at"`
+	Context  Context   `json:"context"`
+}
+
+type Context struct {
+	Type         string       `json:"type"`
+	Href         string       `json:"href"`
+	ExternalURLs ExternalURLs `json:"external_urls"`
+	URI          string       `json:"uri"`
+}
+
+type RecentlyPlayedTracksResponse struct {
+	Href    string        `json:"href"`
+	Limit   int           `json:"limit"`
+	Next    *string       `json:"next"`
+	Cursors Cursors       `json:"cursors"`
+	Total   int           `json:"total"`
+	Items   []PlayHistory `json:"items"`
+	Context Context       `json:"context"`
 }

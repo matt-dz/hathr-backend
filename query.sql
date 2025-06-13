@@ -282,12 +282,15 @@ WHERE
     AND registered_at IS NOT NULL;
 
 -- name: UpdateSpotifyTokens :exec
-UPDATE spotify_tokens
+UPDATE spotify_tokens s
 SET
   access_token = $1,
   refresh_token = $2,
-  scope = $3
-WHERE user_id = $4;
+  scope = $3,
+  token_expires = $4
+FROM users u
+WHERE u.id = $5;
+
 -- name: CreateSpotifyTrack :exec
 INSERT INTO spotify_tracks (id, name, artists, popularity, image_url, raw)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -325,8 +328,10 @@ LIMIT $1;
 -- name: GetSpotifyTokens :one
 SELECT
     t.access_token,
-    t.refresh_token
-FROM users u
-JOIN spotify_tokens t
+    t.refresh_token,
+    t.token_expires
+FROM spotify_tokens t
+JOIN users u
     ON u.spotify_user_id = t.user_id
-WHERE u.id = $1;
+WHERE u.id = $1
+FOR UPDATE OF t;

@@ -216,11 +216,12 @@ type SpotifyPlay struct {
 }
 
 type SpotifyToken struct {
-	UserID       string `json:"user_id"`
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	Scope        string `json:"scope"`
-	RefreshToken string `json:"refresh_token"`
+	UserID       string           `json:"user_id"`
+	AccessToken  string           `json:"access_token"`
+	TokenType    string           `json:"token_type"`
+	Scope        string           `json:"scope"`
+	RefreshToken string           `json:"refresh_token"`
+	TokenExpires pgtype.Timestamp `json:"token_expires"`
 }
 
 type SpotifyTrack struct {

@@ -499,22 +499,25 @@ func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) 
 const getSpotifyTokens = `-- name: GetSpotifyTokens :one
 SELECT
     t.access_token,
-    t.refresh_token
-FROM users u
-JOIN spotify_tokens t
+    t.refresh_token,
+    t.token_expires
+FROM spotify_tokens t
+JOIN users u
     ON u.spotify_user_id = t.user_id
 WHERE u.id = $1
+FOR UPDATE OF t
 `
 
 type GetSpotifyTokensRow struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	AccessToken  string           `json:"access_token"`
+	RefreshToken string           `json:"refresh_token"`
+	TokenExpires pgtype.Timestamp `json:"token_expires"`
 }
 
 func (q *Queries) GetSpotifyTokens(ctx context.Context, id uuid.UUID) (GetSpotifyTokensRow, error) {
 	row := q.db.QueryRow(ctx, getSpotifyTokens, id)
 	var i GetSpotifyTokensRow
-	err := row.Scan(&i.AccessToken, &i.RefreshToken)
+	err := row.Scan(&i.AccessToken, &i.RefreshToken, &i.TokenExpires)
 	return i, err
 }
 
@@ -1130,19 +1133,22 @@ func (q *Queries) SignUpUser(ctx context.Context, arg SignUpUserParams) (User, e
 }
 
 const updateSpotifyTokens = `-- name: UpdateSpotifyTokens :exec
-UPDATE spotify_tokens
+UPDATE spotify_tokens s
 SET
   access_token = $1,
   refresh_token = $2,
-  scope = $3
-WHERE user_id = $4
+  scope = $3,
+  token_expires = $4
+FROM users u
+WHERE u.id = $5
 `
 
 type UpdateSpotifyTokensParams struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	Scope        string `json:"scope"`
-	UserID       string `json:"user_id"`
+	AccessToken  string           `json:"access_token"`
+	RefreshToken string           `json:"refresh_token"`
+	Scope        string           `json:"scope"`
+	TokenExpires pgtype.Timestamp `json:"token_expires"`
+	ID           uuid.UUID        `json:"id"`
 }
 
 func (q *Queries) UpdateSpotifyTokens(ctx context.Context, arg UpdateSpotifyTokensParams) error {
@@ -1150,7 +1156,8 @@ func (q *Queries) UpdateSpotifyTokens(ctx context.Context, arg UpdateSpotifyToke
 		arg.AccessToken,
 		arg.RefreshToken,
 		arg.Scope,
-		arg.UserID,
+		arg.TokenExpires,
+		arg.ID,
 	)
 	return err
 }

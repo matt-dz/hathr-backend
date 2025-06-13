@@ -5,6 +5,7 @@ package requests
 import (
 	"hathr-backend/internal/api/models"
 	"hathr-backend/internal/database"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -57,4 +58,9 @@ type UpdateUserProfile struct {
 type AdminLogin struct {
 	Username string `json:"username" validate:"required"`
 	Password string `json:"password" validate:"required"`
+}
+
+type UpdateSpotifyPlays struct {
+	Start time.Time `json:"start" validate:"required"`
+	End   time.Time `json:"end" validate:"required"`
 }

@@ -24,7 +24,7 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 )
 
-const spotifyBaseURL = "https://api.spotify.com/v1/"
+const spotifyBaseURL = "https://api.spotify.com/v1"
 const spotifyAuthURL = "https://accounts.spotify.com/"
 
 func LoginUser(login spotifyModels.LoginRequest, env *hathrEnv.Env, ctx context.Context) (spotifyModels.LoginResponse, error) {
@@ -102,7 +102,7 @@ func GetUserProfile(bearerToken string, env *hathrEnv.Env, ctx context.Context) 
 
 	// Create request
 	env.Logger.DebugContext(ctx, "Creating request")
-	req, err := retryablehttp.NewRequest(http.MethodGet, spotifyBaseURL+"me", nil)
+	req, err := retryablehttp.NewRequest(http.MethodGet, fmt.Sprintf("%s/me", spotifyBaseURL), nil)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Error creating request", slog.Any("error", err))
 		return user, err
@@ -212,4 +212,52 @@ func RefreshToken(refreshToken string, env *hathrEnv.Env, ctx context.Context) (
 	}
 
 	return refreshTokenResponse, nil
+}
+
+func GetRecentlyPlayedTracks(accessToken string, before time.Time, after time.Time, env *hathrEnv.Env, ctx context.Context) (spotifyModels.RecentlyPlayedTracksResponse, error) {
+
+	var response spotifyModels.RecentlyPlayedTracksResponse
+
+	// Create request
+	env.Logger.DebugContext(ctx, "Creating request")
+	url := fmt.Sprintf("%s/me/player/recently-played?limit=50&before=%d&after=%d", spotifyBaseURL, before.Unix(), after.Unix())
+	req, err := retryablehttp.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Error creating request", slog.Any("error", err))
+		return response, err
+	}
+	req.Header.Set("Authorization", accessToken)
+
+	// Send request
+	env.Logger.DebugContext(ctx, "Sending request")
+	client := retryablehttp.NewClient()
+	client.RetryWaitMax = time.Second * 10
+	client.Logger = env.Logger
+	res, err := client.Do(req)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to send request", slog.Any("error", err))
+		return response, err
+	}
+
+	// If unsuccessful, return error
+	if res.StatusCode != http.StatusOK {
+		env.Logger.ErrorContext(ctx, "Unsuccessful request", slog.Any("res", res))
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to read body", slog.Any("error", err))
+		}
+		env.Logger.ErrorContext(ctx, "decoded body", slog.String("status", res.Status), slog.String("body", string(body)))
+		return response, &spotifyErrors.SpotifyError{StatusCode: res.StatusCode, Status: res.Status, Message: string(body)}
+	}
+
+	// Decode response
+	env.Logger.DebugContext(ctx, "Decoding spotify response")
+	defer res.Body.Close()
+	if err := hathrJson.DecodeJson(&response, json.NewDecoder(res.Body)); err != nil {
+		env.Logger.ErrorContext(ctx, "Error decoding response", slog.Any("error", err))
+		return response, err
+	}
+
+	env.Logger.InfoContext(ctx, "Successfully retrieved recently played tracks", slog.Int("count", len(response.Items)))
+	return response, nil
 }

@@ -25,6 +25,7 @@ import (
 	hathrJson "hathr-backend/internal/json"
 	hathrJWT "hathr-backend/internal/jwt"
 	hathrSpotify "hathr-backend/internal/spotify"
+	spotifyErrors "hathr-backend/internal/spotify/errors"
 	spotifyModels "hathr-backend/internal/spotify/models"
 
 	"github.com/go-playground/validator/v10"
@@ -198,20 +199,67 @@ func writeErrorResponse(w *http.ResponseWriter, ctx context.Context, env *hathrE
 	}
 }
 
-func extractLargestImage(spotifyData spotifyModels.User) string {
-	if len(spotifyData.Images) == 0 {
+func extractLargestImage(images []spotifyModels.Image) string {
+	if len(images) == 0 {
 		return ""
 	}
 
-	largestImage := spotifyData.Images[0]
+	largestImage := images[0]
 	largestSize := largestImage.Height
-	for _, image := range spotifyData.Images {
+	for _, image := range images {
 		if image.Height > largestSize {
 			largestImage = image
 			largestSize = image.Height
 		}
 	}
 	return largestImage.URL
+}
+
+func retrieveSpotifyToken(id uuid.UUID, env *hathrEnv.Env, ctx context.Context) (string, error) {
+	tx, err := env.Database.Conn.Begin(ctx)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to begin transaction", slog.Any("error", err))
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	env.Logger.DebugContext(ctx, "Retrieving spotify tokens")
+	tokens, err := env.Database.GetSpotifyTokens(ctx, id)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to retrieve spotify tokens", slog.Any("error", err))
+		return "", err
+	}
+
+	// If token expires before 1 minute, refresh it
+	if tokens.TokenExpires.Time.After(time.Now().Add(time.Minute)) {
+		return tokens.AccessToken, nil
+	}
+
+	// Refresh token
+	env.Logger.DebugContext(ctx, "Refreshing access token")
+	res, err := hathrSpotify.RefreshToken(tokens.RefreshToken, env, ctx)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to refresh spotify token", slog.Any("error", err))
+		return "", err
+	}
+
+	// Update token in the database
+	env.Logger.DebugContext(ctx, "Updating spotify tokens in DB")
+	params := database.UpdateSpotifyTokensParams{
+		AccessToken:  res.AccessToken,
+		Scope:        res.Scope,
+		ID:           id,
+		RefreshToken: tokens.RefreshToken,
+	}
+	if res.RefreshToken != nil {
+		params.RefreshToken = *res.RefreshToken
+	}
+	if err := env.Database.UpdateSpotifyTokens(ctx, params); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to update spotify tokens in DB", slog.Any("error", err))
+		return "", err
+	}
+
+	return res.AccessToken, nil
 }
 
 func ServeSpotifyOAuthMetadata(w http.ResponseWriter, r *http.Request) {
@@ -423,7 +471,7 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update user imageURL
-	imageURL := extractLargestImage(spotifyUser)
+	imageURL := extractLargestImage(spotifyUser.Images)
 	if imageURL != "" {
 		env.Logger.DebugContext(ctx, "Updating user image")
 		rows, err := env.Database.UpdateUserImage(ctx, database.UpdateUserImageParams{
@@ -1961,6 +2009,15 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Retrieving request parameters")
 	userID := mux.Vars(r)["id"]
 
+	var request requests.UpdateSpotifyPlays
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := hathrJson.DecodeJson(&request, decoder); err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
 	// Validate parameters
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	if err := uuid.Validate(userID); err != nil {
@@ -1968,13 +2025,89 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid user ID in route parameter")
 		return
 	}
+	validator := validator.New(validator.WithRequiredStructEnabled())
+	if err := validator.Struct(request); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
 
 	// Retrieve spotify tokens
 	env.Logger.DebugContext(ctx, "Retrieving Spotify tokens from DB")
-	tokens, err := env.Database.GetSpotifyTokens(ctx, uuid.MustParse(userID))
+	accessToken, err := retrieveSpotifyToken(uuid.MustParse(userID), env, ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.Logger.ErrorContext(ctx, "Spotify tokens not found for user", slog.Any("error", err))
 		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Spotify tokens not found for user")
 		return
+	} else if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
+
+	// Retrieve recent plays
+	env.Logger.DebugContext(ctx, "Retrieving recent plays from Spotify")
+	recentTracks, err := hathrSpotify.GetRecentlyPlayedTracks(accessToken, request.End, request.Start, env, ctx)
+	var spotifyErr *spotifyErrors.SpotifyError
+	if errors.As(err, &spotifyErr) && spotifyErr.StatusCode == http.StatusUnauthorized {
+		env.Logger.ErrorContext(ctx, "Spotify rate limit exceeded", slog.Any("error", err))
+		writeErrorResponse(&w, ctx, env, http.StatusTooManyRequests, "Spotify rate limit exceeded")
+		return
+	} else if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to retrieve recent plays from Spotify", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	env.Logger.DebugContext(ctx, "Processing tracks")
+	for _, playHistory := range recentTracks.Items {
+		// Create the track in the database
+		env.Logger.DebugContext(ctx, "Creating track in DB", slog.String("track_id", playHistory.Track.ID))
+
+		artists := make([]string, len(playHistory.Track.Artists))
+		for i, artist := range playHistory.Track.Artists {
+			artists[i] = artist.Name
+		}
+		imgUrl := extractLargestImage(playHistory.Track.Album.Images)
+		raw, err := json.Marshal(playHistory.Track)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to marshal track data", slog.Any("error", err), slog.String("track_id", playHistory.Track.ID))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		err = env.Database.CreateSpotifyTrack(ctx, database.CreateSpotifyTrackParams{
+			ID:   playHistory.Track.ID,
+			Name: playHistory.Track.Name,
+			ImageUrl: pgtype.Text{
+				String: imgUrl,
+				Valid:  imgUrl != "",
+			},
+			Artists:    artists,
+			Popularity: int32(playHistory.Track.Popularity),
+			Raw:        raw,
+		})
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to create track in DB", slog.Any("error", err), slog.String("track_id", playHistory.Track.ID))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		// Create play in db
+		env.Logger.DebugContext(ctx, "Creating play in DB", slog.String("track_id", playHistory.Track.ID))
+		err = env.Database.CreateSpotifyPlay(ctx, database.CreateSpotifyPlayParams{
+			UserID:  uuid.MustParse(userID),
+			TrackID: playHistory.Track.ID,
+			PlayedAt: pgtype.Timestamp{
+				Time:  playHistory.PlayedAt,
+				Valid: true,
+			},
+		})
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to create play in DB", slog.Any("error", err), slog.String("track_id", playHistory.Track.ID))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	env.Logger.DebugContext(ctx, "Successfully updated Spotify plays")
 }

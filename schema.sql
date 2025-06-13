@@ -117,10 +117,24 @@ CREATE TABLE spotify_tokens (
     token_type TEXT NOT NULL,
     scope TEXT NOT NULL,
     refresh_token TEXT NOT NULL,
+    token_expires TIMESTAMP NOT NULL,
 
     PRIMARY KEY(user_id),
     FOREIGN KEY (user_id) REFERENCES users (spotify_user_id)
         ON DELETE CASCADE
+);
+
+CREATE TABLE spotify_tracks (
+    id TEXT NOT NULL,
+
+    name TEXT NOT NULL,
+    artists TEXT[] NOT NULL,
+    popularity INTEGER NOT NULL,
+    image_url TEXT,
+    raw JSONB NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (id)
 );
 
 CREATE TABLE spotify_plays (
@@ -137,16 +151,3 @@ CREATE TABLE spotify_plays (
 
 CREATE INDEX idx_spotify_plays_user_played_at
   ON spotify_plays (user_id, played_at);
-
-CREATE TABLE spotify_tracks (
-    id TEXT NOT NULL,
-
-    name TEXT NOT NULL,
-    artists TEXT[] NOT NULL,
-    popularity INTEGER NOT NULL,
-    image_url TEXT,
-    raw JSONB NOT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT now(),
-
-    PRIMARY KEY (id)
-);

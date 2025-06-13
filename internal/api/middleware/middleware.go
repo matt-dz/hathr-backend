@@ -301,10 +301,10 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	playlists.HandleFunc("/{id}", handlers.GetPlaylist).Methods("GET", "OPTIONS")
 	playlists.HandleFunc("/{id}", handlers.UpdateVisibility).Methods("PATCH", "OPTIONS")
 
-	admin := s.PathPrefix("").Subrouter()
-	admin.Use(AuthorizeRequest)
-	admin.Use(AuthorizeAdminRequest)
-	admin.HandleFunc("/playlist/monthly", handlers.CreateMonthlyPlaylist).Methods("POST", "OPTIONS")
+	playlist := s.PathPrefix("/playlist").Subrouter()
+	playlist.Use(AuthorizeRequest)
+	playlist.Use(AuthorizeAdminRequest)
+	playlist.HandleFunc("/{user_id}/spotify/monthly", handlers.CreateMonthlyPlaylist).Methods("POST", "OPTIONS")
 
 	friendships := s.PathPrefix("/friendships").Subrouter()
 	friendships.Use(AuthorizeRequest)

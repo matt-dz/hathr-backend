@@ -37,6 +37,18 @@ func (m Month) Validate() error {
 	return nil
 }
 
+func (m Month) Index() int {
+	return slices.Index(months[:], Month(strings.ToLower(string(m))))
+}
+
+func (m Month) StartOfMonth(year int) (time.Time, error) {
+	if err := m.Validate(); err != nil {
+		return time.Time{}, err
+	}
+
+	return time.Date(year, time.Month(m.Index()+1), 1, 0, 0, 0, 0, time.UTC), nil
+}
+
 type Provider string
 
 const (
@@ -48,10 +60,6 @@ func (p Provider) Validate() error {
 		return fmt.Errorf("Invalid provider: %s", p)
 	}
 	return nil
-}
-
-func (m Month) Index() int {
-	return slices.Index(months[:], Month(strings.ToLower(string(m))))
 }
 
 func GetMonth(m int) (Month, error) {

@@ -738,31 +738,37 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateMonthlyPlaylist(w http.ResponseWriter, r *http.Request) {
-	// ctx := r.Context()
-	// env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
-	// if !ok {
-	// 	env = hathrEnv.Null()
-	// }
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
 
-	// // Decode request payload
-	// var request requests.CreateMonthlyPlaylist
-	// decoder := json.NewDecoder(r.Body)
-	// decoder.DisallowUnknownFields()
-	// if err := hathrJson.DecodeJson(&request, decoder); err != nil {
-	// 	env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
-	// 	http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-	// 	return
-	// }
+	// Decode request payload
+	userID := mux.Vars(r)["user_id"]
+	var request requests.CreateMonthlyPlaylist
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := hathrJson.DecodeJson(&request, decoder); err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
 
-	// tokens, err := env.Database.GetSpotifyTokens(ctx, request.UserID)
-	// if errors.Is(err, pgx.ErrNoRows) {
-	// 	env.Logger.ErrorContext(ctx, "No Spotify tokens found for user", slog.Any("error", err))
-	// 	writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Spotify tokens not found for user")
-	// } else if err != nil {
-	// 	env.Logger.ErrorContext(ctx, "Failed to get Spotify tokens", slog.Any("error", err))
-	// 	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-	// 	return
-	// }
+	// Validate payload
+	env.Logger.DebugContext(ctx, "Validating parameters")
+	validator := validator.New(validator.WithRequiredStructEnabled())
+	if err := validator.Struct(request); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
 }
 
 func GetPersonalPlaylists(w http.ResponseWriter, r *http.Request) {

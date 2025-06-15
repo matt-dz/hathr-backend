@@ -194,7 +194,6 @@ type Friendship struct {
 type Playlist struct {
 	ID         uuid.UUID          `json:"id"`
 	UserID     uuid.UUID          `json:"user_id"`
-	Tracks     [][]byte           `json:"tracks"`
 	Type       PlaylistType       `json:"type"`
 	Name       string             `json:"name"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
@@ -213,6 +212,11 @@ type SpotifyPlay struct {
 	UserID   uuid.UUID          `json:"user_id"`
 	TrackID  string             `json:"track_id"`
 	PlayedAt pgtype.Timestamptz `json:"played_at"`
+}
+
+type SpotifyPlaylistTrack struct {
+	PlaylistID uuid.UUID `json:"playlist_id"`
+	TrackID    string    `json:"track_id"`
 }
 
 type SpotifyToken struct {

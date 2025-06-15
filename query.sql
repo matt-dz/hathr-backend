@@ -34,17 +34,21 @@ WHERE
 ORDER BY similarity(u.username, @username::text) DESC
 LIMIT 10;
 
--- name: CreateMonthlyPlaylist :one
-INSERT INTO playlists(user_id, tracks, year, month, name, type)
-VALUES ($1, $2, $3, $4, $5, 'monthly')
-RETURNING id;
-
 -- name: GetPersonalPlaylists :many
 SELECT
-    p.id, p.user_id, ARRAY_LENGTH(p.tracks, 1) AS num_tracks,
-    p.type, p.name, p.created_at, p.visibility,
-    p.year, p.week, p.month
-FROM playlists p WHERE user_id = $1;
+    p.id, p.type, p.name, p.user_id,
+    p.created_at, p.visibility, p.year,
+    p.week, p.month, COUNT(st) AS num_tracks
+FROM playlists p
+JOIN spotify_playlist_tracks ppt
+    ON ppt.playlist_id = p.id
+JOIN spotify_tracks st
+    ON st.id = ppt.track_id
+WHERE p.user_id = $1
+GROUP BY
+    p.id, p.type, p.name, p.user_id,
+    p.created_at, p.visibility, p.year,
+    p.week, p.month;
 
 -- name: GetUserPlaylists :many
 SELECT
@@ -62,12 +66,24 @@ WHERE
     (p.visibility = 'public' OR
     (p.visibility = 'private' AND p.user_id = @user_id::uuid));
 
--- name: GetPlaylist :one
-SELECT sqlc.embed(p), sqlc.embed(u)
+-- name: GetSpotifyPlaylistWithOwner :one
+SELECT
+    sqlc.embed(p),
+    sqlc.embed(u)
 FROM playlists p
 JOIN users u
   ON u.id = p.user_id
-WHERE p.id= $1;
+WHERE p.id = $1;
+
+-- name: GetSpotifyPlaylistTracks :many
+SELECT
+  st.id,
+  st.name,
+  st.artists,
+  st.image_url
+FROM spotify_playlist_tracks ppt
+JOIN spotify_tracks st ON st.id = ppt.track_id
+WHERE ppt.playlist_id = $1;
 
 -- name: GetLatestPrivateKey :one
 SELECT * FROM private_keys
@@ -250,14 +266,21 @@ SELECT
     p.month AS playlist_month,
     p.created_at AS playlist_created_at,
     p.visibility AS playlist_visibility,
-    ARRAY_LENGTH(p.tracks, 1) AS num_tracks
+    p.num_tracks
 FROM friends fr
 JOIN users u
     ON u.id = fr.friend_id
 LEFT JOIN LATERAL (
-    SELECT *
+    SELECT
+        id, type, name, year, week,
+        month, created_at, visibility,
+        COUNT(*) as num_tracks
     FROM playlists
+    JOIN spotify_playlist_tracks ppt ON ppt.playlist_id = playlists.id
     WHERE user_id = fr.friend_id AND visibility = 'public'
+    GROUP BY
+        id, type, name, year, week,
+        month, created_at, visibility
     ORDER BY created_at DESC
     LIMIT 1
 ) p ON true
@@ -313,16 +336,13 @@ ON CONFLICT DO NOTHING;
 -- name: GetTopSpotifyTracks :many
 SELECT
     p.track_id,
-    t.name,
-    t.artists,
-    t.image_url,
     COUNT (*) AS plays
 FROM spotify_plays p
 JOIN spotify_tracks t ON p.track_id = t.id
 WHERE
     p.user_id = @user_id::UUID
-    AND p.played_at >= @start_time::TIMESTAMP
-    AND p.played_at < @end_time::TIMESTAMP
+    AND p.played_at >= @start_time::TIMESTAMPTZ
+    AND p.played_at < @end_time::TIMESTAMPTZ
 GROUP BY
     p.track_id, t.name, t.artists, t.image_url
 ORDER BY plays DESC
@@ -338,3 +358,15 @@ JOIN users u
     ON u.spotify_user_id = t.user_id
 WHERE u.id = $1
 FOR UPDATE OF t;
+
+-- name: CreateMonthlySpotifyPlaylist :one
+INSERT INTO playlists (user_id, name, type, visibility, year, month)
+VALUES ($1, $2, 'monthly', 'public', $3, $4)
+ON CONFLICT DO NOTHING
+RETURNING id as playlist_id;
+
+-- name: AddSpotifyPlaylistTracks :exec
+INSERT INTO spotify_playlist_tracks (playlist_id, track_id)
+SELECT @playlist_id::UUID, t
+FROM unnest(@track_ids::TEXT[]) AS t
+ON CONFLICT DO NOTHING;

@@ -44,6 +44,23 @@ func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendReque
 	return i, err
 }
 
+const addSpotifyPlaylistTracks = `-- name: AddSpotifyPlaylistTracks :exec
+INSERT INTO spotify_playlist_tracks (playlist_id, track_id)
+SELECT $1::UUID, t
+FROM unnest($2::TEXT[]) AS t
+ON CONFLICT DO NOTHING
+`
+
+type AddSpotifyPlaylistTracksParams struct {
+	PlaylistID uuid.UUID `json:"playlist_id"`
+	TrackIds   []string  `json:"track_ids"`
+}
+
+func (q *Queries) AddSpotifyPlaylistTracks(ctx context.Context, arg AddSpotifyPlaylistTracksParams) error {
+	_, err := q.db.Exec(ctx, addSpotifyPlaylistTracks, arg.PlaylistID, arg.TrackIds)
+	return err
+}
+
 const createAdminUser = `-- name: CreateAdminUser :exec
 INSERT INTO users (username, password, email, role, registered_at)
 VALUES ($1, $2, $3, 'admin', now())
@@ -99,31 +116,30 @@ func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendReque
 	return i, err
 }
 
-const createMonthlyPlaylist = `-- name: CreateMonthlyPlaylist :one
-INSERT INTO playlists(user_id, tracks, year, month, name, type)
-VALUES ($1, $2, $3, $4, $5, 'monthly')
-RETURNING id
+const createMonthlySpotifyPlaylist = `-- name: CreateMonthlySpotifyPlaylist :one
+INSERT INTO playlists (user_id, name, type, visibility, year, month)
+VALUES ($1, $2, 'monthly', 'public', $3, $4)
+ON CONFLICT DO NOTHING
+RETURNING id as playlist_id
 `
 
-type CreateMonthlyPlaylistParams struct {
+type CreateMonthlySpotifyPlaylistParams struct {
 	UserID uuid.UUID   `json:"user_id"`
-	Tracks [][]byte    `json:"tracks"`
+	Name   string      `json:"name"`
 	Year   int32       `json:"year"`
 	Month  pgtype.Int4 `json:"month"`
-	Name   string      `json:"name"`
 }
 
-func (q *Queries) CreateMonthlyPlaylist(ctx context.Context, arg CreateMonthlyPlaylistParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, createMonthlyPlaylist,
+func (q *Queries) CreateMonthlySpotifyPlaylist(ctx context.Context, arg CreateMonthlySpotifyPlaylistParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createMonthlySpotifyPlaylist,
 		arg.UserID,
-		arg.Tracks,
+		arg.Name,
 		arg.Year,
 		arg.Month,
-		arg.Name,
 	)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
+	var playlist_id uuid.UUID
+	err := row.Scan(&playlist_id)
+	return playlist_id, err
 }
 
 const createSpotifyPlay = `-- name: CreateSpotifyPlay :exec
@@ -281,14 +297,21 @@ SELECT
     p.month AS playlist_month,
     p.created_at AS playlist_created_at,
     p.visibility AS playlist_visibility,
-    ARRAY_LENGTH(p.tracks, 1) AS num_tracks
+    p.num_tracks
 FROM friends fr
 JOIN users u
     ON u.id = fr.friend_id
 LEFT JOIN LATERAL (
-    SELECT id, user_id, tracks, type, name, created_at, visibility, year, week, month
+    SELECT
+        id, type, name, year, week,
+        month, created_at, visibility,
+        COUNT(*) as num_tracks
     FROM playlists
+    JOIN spotify_playlist_tracks ppt ON ppt.playlist_id = playlists.id
     WHERE user_id = fr.friend_id AND visibility = 'public'
+    GROUP BY
+        id, type, name, year, week,
+        month, created_at, visibility
     ORDER BY created_at DESC
     LIMIT 1
 ) p ON true
@@ -305,7 +328,7 @@ type GetFriendPlaylistsRow struct {
 	PlaylistMonth      pgtype.Int4        `json:"playlist_month"`
 	PlaylistCreatedAt  pgtype.Timestamptz `json:"playlist_created_at"`
 	PlaylistVisibility PlaylistVisibility `json:"playlist_visibility"`
-	NumTracks          int32              `json:"num_tracks"`
+	NumTracks          int64              `json:"num_tracks"`
 }
 
 func (q *Queries) GetFriendPlaylists(ctx context.Context, userAID uuid.UUID) ([]GetFriendPlaylistsRow, error) {
@@ -366,23 +389,32 @@ func (q *Queries) GetLatestPrivateKey(ctx context.Context) (PrivateKey, error) {
 
 const getPersonalPlaylists = `-- name: GetPersonalPlaylists :many
 SELECT
-    p.id, p.user_id, ARRAY_LENGTH(p.tracks, 1) AS num_tracks,
-    p.type, p.name, p.created_at, p.visibility,
-    p.year, p.week, p.month
-FROM playlists p WHERE user_id = $1
+    p.id, p.type, p.name, p.user_id,
+    p.created_at, p.visibility, p.year,
+    p.week, p.month, COUNT(st) AS num_tracks
+FROM playlists p
+JOIN spotify_playlist_tracks ppt
+    ON ppt.playlist_id = p.id
+JOIN spotify_tracks st
+    ON st.id = ppt.track_id
+WHERE p.user_id = $1
+GROUP BY
+    p.id, p.type, p.name, p.user_id,
+    p.created_at, p.visibility, p.year,
+    p.week, p.month
 `
 
 type GetPersonalPlaylistsRow struct {
 	ID         uuid.UUID          `json:"id"`
-	UserID     uuid.UUID          `json:"user_id"`
-	NumTracks  int32              `json:"num_tracks"`
 	Type       PlaylistType       `json:"type"`
 	Name       string             `json:"name"`
+	UserID     uuid.UUID          `json:"user_id"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	Visibility PlaylistVisibility `json:"visibility"`
 	Year       int32              `json:"year"`
 	Week       pgtype.Int4        `json:"week"`
 	Month      pgtype.Int4        `json:"month"`
+	NumTracks  int64              `json:"num_tracks"`
 }
 
 func (q *Queries) GetPersonalPlaylists(ctx context.Context, userID uuid.UUID) ([]GetPersonalPlaylistsRow, error) {
@@ -396,15 +428,15 @@ func (q *Queries) GetPersonalPlaylists(ctx context.Context, userID uuid.UUID) ([
 		var i GetPersonalPlaylistsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.UserID,
-			&i.NumTracks,
 			&i.Type,
 			&i.Name,
+			&i.UserID,
 			&i.CreatedAt,
 			&i.Visibility,
 			&i.Year,
 			&i.Week,
 			&i.Month,
+			&i.NumTracks,
 		); err != nil {
 			return nil, err
 		}
@@ -441,26 +473,81 @@ func (q *Queries) GetPersonalProfile(ctx context.Context, id uuid.UUID) (User, e
 	return i, err
 }
 
-const getPlaylist = `-- name: GetPlaylist :one
-SELECT p.id, p.user_id, p.tracks, p.type, p.name, p.created_at, p.visibility, p.year, p.week, p.month, u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+const getPrivateKey = `-- name: GetPrivateKey :one
+SELECT value FROM private_keys WHERE kid = $1
+`
+
+func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) {
+	row := q.db.QueryRow(ctx, getPrivateKey, kid)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
+const getSpotifyPlaylistTracks = `-- name: GetSpotifyPlaylistTracks :many
+SELECT
+  st.id,
+  st.name,
+  st.artists,
+  st.image_url
+FROM spotify_playlist_tracks ppt
+JOIN spotify_tracks st ON st.id = ppt.track_id
+WHERE ppt.playlist_id = $1
+`
+
+type GetSpotifyPlaylistTracksRow struct {
+	ID       string      `json:"id"`
+	Name     string      `json:"name"`
+	Artists  []string    `json:"artists"`
+	ImageUrl pgtype.Text `json:"image_url"`
+}
+
+func (q *Queries) GetSpotifyPlaylistTracks(ctx context.Context, playlistID uuid.UUID) ([]GetSpotifyPlaylistTracksRow, error) {
+	rows, err := q.db.Query(ctx, getSpotifyPlaylistTracks, playlistID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSpotifyPlaylistTracksRow
+	for rows.Next() {
+		var i GetSpotifyPlaylistTracksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Artists,
+			&i.ImageUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSpotifyPlaylistWithOwner = `-- name: GetSpotifyPlaylistWithOwner :one
+SELECT
+    p.id, p.user_id, p.type, p.name, p.created_at, p.visibility, p.year, p.week, p.month,
+    u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM playlists p
 JOIN users u
   ON u.id = p.user_id
-WHERE p.id= $1
+WHERE p.id = $1
 `
 
-type GetPlaylistRow struct {
+type GetSpotifyPlaylistWithOwnerRow struct {
 	Playlist Playlist `json:"playlist"`
 	User     User     `json:"user"`
 }
 
-func (q *Queries) GetPlaylist(ctx context.Context, id uuid.UUID) (GetPlaylistRow, error) {
-	row := q.db.QueryRow(ctx, getPlaylist, id)
-	var i GetPlaylistRow
+func (q *Queries) GetSpotifyPlaylistWithOwner(ctx context.Context, id uuid.UUID) (GetSpotifyPlaylistWithOwnerRow, error) {
+	row := q.db.QueryRow(ctx, getSpotifyPlaylistWithOwner, id)
+	var i GetSpotifyPlaylistWithOwnerRow
 	err := row.Scan(
 		&i.Playlist.ID,
 		&i.Playlist.UserID,
-		&i.Playlist.Tracks,
 		&i.Playlist.Type,
 		&i.Playlist.Name,
 		&i.Playlist.CreatedAt,
@@ -483,17 +570,6 @@ func (q *Queries) GetPlaylist(ctx context.Context, id uuid.UUID) (GetPlaylistRow
 		&i.User.RefreshExpiresAt,
 	)
 	return i, err
-}
-
-const getPrivateKey = `-- name: GetPrivateKey :one
-SELECT value FROM private_keys WHERE kid = $1
-`
-
-func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) {
-	row := q.db.QueryRow(ctx, getPrivateKey, kid)
-	var value string
-	err := row.Scan(&value)
-	return value, err
 }
 
 const getSpotifyTokens = `-- name: GetSpotifyTokens :one
@@ -524,16 +600,13 @@ func (q *Queries) GetSpotifyTokens(ctx context.Context, id uuid.UUID) (GetSpotif
 const getTopSpotifyTracks = `-- name: GetTopSpotifyTracks :many
 SELECT
     p.track_id,
-    t.name,
-    t.artists,
-    t.image_url,
     COUNT (*) AS plays
 FROM spotify_plays p
 JOIN spotify_tracks t ON p.track_id = t.id
 WHERE
     p.user_id = $2::UUID
-    AND p.played_at >= $3::TIMESTAMP
-    AND p.played_at < $4::TIMESTAMP
+    AND p.played_at >= $3::TIMESTAMPTZ
+    AND p.played_at < $4::TIMESTAMPTZ
 GROUP BY
     p.track_id, t.name, t.artists, t.image_url
 ORDER BY plays DESC
@@ -541,18 +614,15 @@ LIMIT $1
 `
 
 type GetTopSpotifyTracksParams struct {
-	Limit     int32            `json:"limit"`
-	UserID    uuid.UUID        `json:"user_id"`
-	StartTime pgtype.Timestamp `json:"start_time"`
-	EndTime   pgtype.Timestamp `json:"end_time"`
+	Limit     int32              `json:"limit"`
+	UserID    uuid.UUID          `json:"user_id"`
+	StartTime pgtype.Timestamptz `json:"start_time"`
+	EndTime   pgtype.Timestamptz `json:"end_time"`
 }
 
 type GetTopSpotifyTracksRow struct {
-	TrackID  string      `json:"track_id"`
-	Name     string      `json:"name"`
-	Artists  []string    `json:"artists"`
-	ImageUrl pgtype.Text `json:"image_url"`
-	Plays    int64       `json:"plays"`
+	TrackID string `json:"track_id"`
+	Plays   int64  `json:"plays"`
 }
 
 func (q *Queries) GetTopSpotifyTracks(ctx context.Context, arg GetTopSpotifyTracksParams) ([]GetTopSpotifyTracksRow, error) {
@@ -569,13 +639,7 @@ func (q *Queries) GetTopSpotifyTracks(ctx context.Context, arg GetTopSpotifyTrac
 	var items []GetTopSpotifyTracksRow
 	for rows.Next() {
 		var i GetTopSpotifyTracksRow
-		if err := rows.Scan(
-			&i.TrackID,
-			&i.Name,
-			&i.Artists,
-			&i.ImageUrl,
-			&i.Plays,
-		); err != nil {
+		if err := rows.Scan(&i.TrackID, &i.Plays); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

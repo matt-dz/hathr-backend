@@ -26,7 +26,7 @@ type GetUserPlaylists struct {
 }
 
 type GetPlaylist struct {
-	Playlist models.Playlist   `json:"playlist" validate:"required"`
+	Playlist models.SpotifyPlaylist   `json:"playlist" validate:"required"`
 	User     models.PublicUser `json:"user" validate:"required"`
 }
 

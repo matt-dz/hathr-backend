@@ -41,14 +41,6 @@ func (m Month) Index() int {
 	return slices.Index(months[:], Month(strings.ToLower(string(m))))
 }
 
-func (m Month) StartOfMonth(year int) (time.Time, error) {
-	if err := m.Validate(); err != nil {
-		return time.Time{}, err
-	}
-
-	return time.Date(year, time.Month(m.Index()+1), 1, 0, 0, 0, 0, time.UTC), nil
-}
-
 type Provider string
 
 const (
@@ -69,12 +61,19 @@ func GetMonth(m int) (Month, error) {
 	return months[m-1], nil
 }
 
-type Playlist struct {
-	ID     uuid.UUID                `json:"id"`
-	UserID uuid.UUID                `json:"user_id"`
-	Tracks []map[string]interface{} `json:"tracks"`
-	Year   int                      `json:"year"`
-	Name   string                   `json:"name"`
+type SpotifyPlaylistTrack struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Artists  []string `json:"artists"`
+	ImageURL string   `json:"image_url"`
+}
+
+type SpotifyPlaylist struct {
+	ID     uuid.UUID              `json:"id"`
+	UserID uuid.UUID              `json:"user_id"`
+	Tracks []SpotifyPlaylistTrack `json:"tracks"`
+	Year   int                    `json:"year"`
+	Name   string                 `json:"name"`
 
 	Type  string `json:"type"`
 	Month *Month `json:"month"`

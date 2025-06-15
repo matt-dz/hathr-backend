@@ -76,7 +76,6 @@ CREATE TYPE playlist_type AS ENUM(
 CREATE TABLE playlists (
     id UUID DEFAULT gen_random_uuid (),
     user_id UUID,
-    tracks JSONB[] NOT NULL,
     type playlist_type NOT NULL,
     name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now (),
@@ -103,6 +102,16 @@ CREATE TABLE playlists (
     UNIQUE (user_id, type, year, week, month)
 );
 
+CREATE TABLE spotify_playlist_tracks(
+    playlist_id UUID NOT NULL,
+    track_id TEXT NOT NULL,
+
+    PRIMARY KEY (playlist_id, track_id),
+    FOREIGN KEY (playlist_id) REFERENCES playlists (id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (track_id) REFERENCES spotify_tracks (id)
+        ON DELETE CASCADE
+);
 
 CREATE TABLE private_keys (
     kid SERIAL,

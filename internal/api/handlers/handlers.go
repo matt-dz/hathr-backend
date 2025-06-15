@@ -151,52 +151,11 @@ func buildJWT(userID uuid.UUID, role database.Role, registered bool, key string)
 	}, []byte(key))
 }
 
-func buildPlaylist(playlist database.Playlist, env *hathrEnv.Env, ctx context.Context) (models.Playlist, error) {
-	res := models.Playlist{
-		ID:         playlist.ID,
-		UserID:     playlist.UserID,
-		Year:       int(playlist.Year),
-		Name:       playlist.Name,
-		Type:       string(playlist.Type),
-		CreatedAt:  playlist.CreatedAt.Time,
-		Visibility: playlist.Visibility,
-		Tracks:     make([]map[string]interface{}, len(playlist.Tracks)),
-	}
-
-	for i, t := range playlist.Tracks {
-		var track map[string]interface{}
-		env.Logger.DebugContext(ctx, "Unarmashaling track", slog.Int("no.", i))
-		err := json.Unmarshal(t, &track)
-		if err != nil {
-			env.Logger.ErrorContext(ctx, "Unable to unmarshal track", slog.Any("error", err))
-			return res, err
-		}
-		res.Tracks[i] = track
-	}
-
-	if playlist.Type == database.PlaylistTypeMonthly {
-		month, err := models.GetMonth(int(playlist.Month.Int32))
-		if err != nil {
-			return res, err
-		}
-		res.Month = &month
-		res.Week = nil
-	} else if playlist.Type == database.PlaylistTypeWeekly {
-		week := int(playlist.Week.Int32)
-		res.Week = &week
-		res.Month = nil
-	} else {
-		return res, fmt.Errorf("Invalid playlist type: %s", playlist.Type)
-	}
-
-	return res, nil
-}
-
 func writeErrorResponse(w *http.ResponseWriter, ctx context.Context, env *hathrEnv.Env, statusCode int, message string) {
-	http.Error(*w, http.StatusText(statusCode), statusCode)
-	if _, err := (*w).Write([]byte(message)); err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to write error response", slog.Any("error", err))
-	}
+	// if _, err := (*w).Write([]byte(message)); err != nil {
+	// 	env.Logger.ErrorContext(ctx, "Failed to write error response", slog.Any("error", err))
+	// }
+	http.Error(*w, message, statusCode)
 }
 
 func extractLargestImage(images []spotifyModels.Image) string {
@@ -264,6 +223,13 @@ func retrieveSpotifyToken(id uuid.UUID, env *hathrEnv.Env, ctx context.Context) 
 		return "", err
 	}
 
+	env.Logger.DebugContext(ctx, "Committing transaction")
+	if err := tx.Commit(ctx); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to commit transaction", slog.Any("error", err))
+		return "", err
+	}
+
+	env.Logger.DebugContext(ctx, "Successfully refreshed spotify token")
 	return res.AccessToken, nil
 }
 
@@ -569,8 +535,8 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 
 	// Validate parameters
 	env.Logger.DebugContext(ctx, "Validating parameters")
-	validator := validator.New(validator.WithRequiredStructEnabled())
-	if err := validator.Struct(signupRequest); err != nil {
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	if err := validate.Struct(signupRequest); err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
@@ -757,18 +723,96 @@ func CreateMonthlyPlaylist(w http.ResponseWriter, r *http.Request) {
 
 	// Validate payload
 	env.Logger.DebugContext(ctx, "Validating parameters")
-	validator := validator.New(validator.WithRequiredStructEnabled())
-	if err := validator.Struct(request); err != nil {
+	validate := validator.New()
+	if err := validate.Struct(request); err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
+
+	if err := request.Month.Validate(); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid month", slog.Any("error", err))
+		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := request.Provider.Validate(); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid provider", slog.Any("error", err))
+		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid user ID", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 
+	// Get start of month
+	env.Logger.DebugContext(ctx, "Getting top songs from DB")
+	startOfMonth := time.Date(request.Year, time.Month(request.Month.Index()+1), 1, 0, 0, 0, 0, time.UTC)
+	endOfMonth := startOfMonth.AddDate(0, 1, -1)
+	tracks, err := env.Database.GetTopSpotifyTracks(ctx, database.GetTopSpotifyTracksParams{
+		Limit:  50,
+		UserID: uuid.MustParse(userID),
+		StartTime: pgtype.Timestamptz{
+			Time:  startOfMonth,
+			Valid: true,
+		},
+		EndTime: pgtype.Timestamptz{
+			Time:  endOfMonth,
+			Valid: true,
+		},
+	})
+
+	if err != nil {
+		env.ErrorContext(ctx, "Failed to get top tracks from DB", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	if len(tracks) == 0 {
+		env.DebugContext(ctx, "No recently listened to tracks. Not creating a playlist")
+		writeErrorResponse(&w, ctx, env, http.StatusConflict, "No recently listened to tracks")
+		return
+	}
+
+	// Create playlist
+	env.Logger.DebugContext(ctx, "Creating playlist in DB")
+	playlistID, err := env.Database.CreateMonthlySpotifyPlaylist(ctx, database.CreateMonthlySpotifyPlaylistParams{
+		UserID: uuid.MustParse(userID),
+		Name:   fmt.Sprintf("%s %d", string(request.Month), request.Year),
+		Year:   int32(request.Year),
+		Month: pgtype.Int4{
+			Int32: int32(request.Month.Index()),
+			Valid: true,
+		},
+	})
+	if err != nil {
+		env.ErrorContext(ctx, "Failed to create playlist in DB", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Add tracks
+	env.Logger.DebugContext(ctx, "Adding tracks to playlist in DB")
+	trackIDs := make([]string, len(tracks))
+	for i, track := range tracks {
+		trackIDs[i] = track.TrackID
+	}
+	err = env.Database.AddSpotifyPlaylistTracks(ctx, database.AddSpotifyPlaylistTracksParams{
+		PlaylistID: playlistID,
+		TrackIds:   trackIDs,
+	})
+	if err != nil {
+		env.ErrorContext(ctx, "Failed to add tracks to playlist in DB", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Write response
+	env.Logger.DebugContext(ctx, "Encoding response")
+	w.WriteHeader(http.StatusCreated)
 }
 
 func GetPersonalPlaylists(w http.ResponseWriter, r *http.Request) {
@@ -881,13 +925,13 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve playlist
 	env.Logger.DebugContext(ctx, "Retrieving playlist")
-	dbPlaylist, err := env.Database.Queries.GetPlaylist(ctx, uuid.MustParse(playlistID))
+	dbPlaylist, err := env.Database.Queries.GetSpotifyPlaylistWithOwner(ctx, uuid.MustParse(playlistID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.Logger.ErrorContext(ctx, "Playlist not found", slog.Any("error", err))
 		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Playlist not found")
 		return
 	} else if err != nil {
-		env.Logger.ErrorContext(ctx, "Unsuccessful query", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Unable to retrieve playlist from DB", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -899,10 +943,49 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 	}
 
-	playlist, err := buildPlaylist(dbPlaylist.Playlist, env, ctx)
+	// Fetch tracks for the playlist
+	env.Logger.DebugContext(ctx, "Fetching tracks for the playlist")
+	tracks, err := env.Database.GetSpotifyPlaylistTracks(ctx, dbPlaylist.Playlist.ID)
 	if err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to fetch tracks from DB", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
+	}
+
+	// Build playlist response
+	env.Logger.DebugContext(ctx, "Building playlist response")
+	playlist := models.SpotifyPlaylist{
+		ID:     dbPlaylist.Playlist.ID,
+		UserID: dbPlaylist.Playlist.UserID,
+		Year:   int(dbPlaylist.Playlist.Year),
+		Name:   dbPlaylist.Playlist.Name,
+		Tracks: make([]models.SpotifyPlaylistTrack, len(tracks)),
+
+		Type:  string(dbPlaylist.Playlist.Type),
+		Week:  nil,
+		Month: nil,
+
+		CreatedAt:  dbPlaylist.Playlist.CreatedAt.Time,
+		Visibility: dbPlaylist.Playlist.Visibility,
+	}
+
+	if dbPlaylist.Playlist.Type == database.PlaylistTypeMonthly {
+		month := models.Month(dbPlaylist.Playlist.Month.Int32)
+		playlist.Month = &month
+	}
+
+	if dbPlaylist.Playlist.Type == database.PlaylistTypeWeekly {
+		week := int(dbPlaylist.Playlist.Week.Int32)
+		playlist.Week = &week
+	}
+
+	for i, track := range tracks {
+		playlist.Tracks[i] = models.SpotifyPlaylistTrack{
+			ID:       track.ID,
+			Name:     track.Name,
+			Artists:  track.Artists,
+			ImageURL: track.ImageUrl.String,
+		}
 	}
 
 	// Unmarshal spotify user data
@@ -2040,8 +2123,8 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid user ID in route parameter")
 		return
 	}
-	validator := validator.New(validator.WithRequiredStructEnabled())
-	if err := validator.Struct(request); err != nil {
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	if err := validate.Struct(request); err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return

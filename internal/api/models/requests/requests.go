@@ -15,9 +15,9 @@ type UpsertUser struct {
 }
 
 type CreateMonthlyPlaylist struct {
-	Year     int             `json:"year" validate:"required,gte=2025"`
-	Month    models.Month    `json:"month" validate:"required,validateFn"`
-	Provider models.Provider `json:"provider" validate:"required,validateFn"`
+	Year     int             `json:"year" validate:"required,gte=2025,lte=9999"`
+	Month    models.Month    `json:"month" validate:"required"`
+	Provider models.Provider `json:"provider" validate:"required"`
 }
 
 type GetUserPlaylists struct {

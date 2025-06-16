@@ -159,13 +159,6 @@ func buildJWT(userID uuid.UUID, role database.Role, registered bool, key string)
 	}, []byte(key))
 }
 
-func writeErrorResponse(w *http.ResponseWriter, ctx context.Context, env *hathrEnv.Env, statusCode int, message string) {
-	// if _, err := (*w).Write([]byte(message)); err != nil {
-	// 	env.Logger.ErrorContext(ctx, "Failed to write error response", slog.Any("error", err))
-	// }
-	http.Error(*w, message, statusCode)
-}
-
 func extractLargestImage(images []spotifyModels.Image) string {
 	if len(images) == 0 {
 		return ""
@@ -300,7 +293,7 @@ func AdminLogin(w http.ResponseWriter, r *http.Request) {
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.ErrorContext(ctx, "Unable to get user. Invalid credentials", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid credentials")
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	} else if err != nil {
 		env.ErrorContext(ctx, "Failed to login admin", slog.Any("error", err))
@@ -325,7 +318,7 @@ func AdminLogin(w http.ResponseWriter, r *http.Request) {
 	env.DebugContext(ctx, "Comparing hashes")
 	if subtle.ConstantTimeCompare(givenHash, trueHash) == 0 {
 		env.ErrorContext(ctx, "Invalid credentials", slog.String("username", loginRequest.Username))
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid credentials")
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 	env.DebugContext(ctx, "Successfully logged in admin")
@@ -530,14 +523,14 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -552,13 +545,12 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 	if match := usernameRegex.MatchString(signupRequest.Username); !match {
 		env.Logger.ErrorContext(ctx, "Invalid username", slog.String("username", signupRequest.Username))
 		http.Error(w, "Invalid username", http.StatusBadRequest)
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid username")
 		return
 	}
 
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 
@@ -578,12 +570,12 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
 		env.Logger.ErrorContext(ctx, "Username taken", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusConflict, "Username unavailable")
+		http.Error(w, "Username unavailable", http.StatusConflict)
 		return
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.Logger.ErrorContext(ctx, "User not found or already registered", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "User not found")
+		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
@@ -663,7 +655,7 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 	user, err := env.Database.GetUserFromSession(ctx, refreshRequest.RefreshToken)
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.Logger.ErrorContext(ctx, "No user associated with token", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "No user associated with token")
+		http.Error(w, "No user associated with token", http.StatusNotFound)
 		return
 	} else if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to retrieve user", slog.Any("error", err))
@@ -674,7 +666,7 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 	// Validate refresh token
 	if user.RefreshExpiresAt.Time.Before(time.Now()) {
 		env.Logger.ErrorContext(ctx, "Refresh token expired")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Refresh token expired")
+		http.Error(w, "Refresh token expired", http.StatusUnauthorized)
 		return
 	}
 
@@ -741,12 +733,12 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 	if request.Type == "monthly" {
 		if request.Year < 2025 || request.Year > 9999 {
 			env.Logger.ErrorContext(ctx, "Invalid year", slog.Int("year", request.Year))
-			writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Year must be between 2025 and 9999")
+			http.Error(w, "Year must be between 2025 and 9999", http.StatusBadRequest)
 			return
 		}
 		if err := request.Month.Validate(); err != nil {
 			env.Logger.ErrorContext(ctx, "Invalid month", slog.Any("error", err))
-			writeErrorResponse(&w, ctx, env, http.StatusBadRequest, err.Error())
+			http.Error(w, "Invalid month", http.StatusBadRequest)
 			return
 		}
 	}
@@ -790,7 +782,7 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 
 	if len(tracks) == 0 {
 		env.DebugContext(ctx, "No recently listened to tracks. Not creating a playlist")
-		writeErrorResponse(&w, ctx, env, http.StatusConflict, "No recently listened to tracks")
+		http.Error(w, "No recently listened to tracks", http.StatusConflict)
 		return
 	}
 
@@ -857,13 +849,13 @@ func GetPersonalPlaylists(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -930,13 +922,13 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -944,12 +936,12 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	if err := uuid.Validate(playlistID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid playlist ID", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid playlist ID")
+		http.Error(w, "Invalid playlist ID", http.StatusBadRequest)
 		return
 	}
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 
@@ -958,7 +950,7 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	dbPlaylist, err := env.Database.Queries.GetSpotifyPlaylistWithOwner(ctx, uuid.MustParse(playlistID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.Logger.ErrorContext(ctx, "Playlist not found", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Playlist not found")
+		http.Error(w, "Playlist not found", http.StatusNotFound)
 		return
 	} else if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to retrieve playlist from DB", slog.Any("error", err))
@@ -1053,13 +1045,13 @@ func UpdateVisibility(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -1085,12 +1077,12 @@ func UpdateVisibility(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := uuid.Validate(playlistID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid playlist ID", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid playlist ID")
+		http.Error(w, "Invalid playlist ID", http.StatusBadRequest)
 		return
 	}
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 
@@ -1103,7 +1095,7 @@ func UpdateVisibility(w http.ResponseWriter, r *http.Request) {
 	})
 	if rows == 0 {
 		env.Logger.ErrorContext(ctx, "No rows affected. Playlist not found.", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Playlist not found or you are not authorized to update it")
+		http.Error(w, "Playlist not found or you are not authorized to update it", http.StatusNotFound)
 		return
 	}
 	if err != nil {
@@ -1128,13 +1120,13 @@ func ListFriends(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -1142,7 +1134,7 @@ func ListFriends(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 
@@ -1193,13 +1185,13 @@ func RemoveFriend(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -1207,12 +1199,12 @@ func RemoveFriend(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	if err := uuid.Validate(friendID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid friend id", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in route parameter")
+		http.Error(w, "Invalid ID in route parameter", http.StatusBadRequest)
 		return
 	}
 
@@ -1227,7 +1219,7 @@ func RemoveFriend(w http.ResponseWriter, r *http.Request) {
 	}
 	if rows == 0 {
 		env.Logger.ErrorContext(ctx, "No rows affected. Friendship not found.", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Friendship not found")
+		http.Error(w, "Friendship not found", http.StatusNotFound)
 		return
 	}
 
@@ -1247,13 +1239,13 @@ func ListRequests(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -1263,12 +1255,12 @@ func ListRequests(w http.ResponseWriter, r *http.Request) {
 
 	if direction != "incoming" && direction != "outgoing" && direction != "all" {
 		env.Logger.ErrorContext(ctx, "Invalid direction", slog.String("direction", direction))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid direction")
+		http.Error(w, "Invalid direction", http.StatusBadRequest)
 		return
 	}
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 
@@ -1352,13 +1344,13 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -1381,7 +1373,7 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 
@@ -1398,14 +1390,13 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 		if pgErr.Code == "23503" {
 			env.Logger.ErrorContext(ctx, "Foreign key violation - user not found", slog.Any("error", err))
 			http.Error(w, "User not found", http.StatusNotFound)
-			writeErrorResponse(&w, ctx, env, http.StatusNotFound, "User not found")
 			return
 		}
 
 		// canonical_form violation - only way this is reached is if the user tries to befriend themselves
 		if pgErr.Code == "23514" && pgErr.ConstraintName == "canonical_form" {
 			env.Logger.ErrorContext(ctx, "check violation", slog.Any("error", err))
-			writeErrorResponse(&w, ctx, env, http.StatusConflict, "User cannot be-friend themself")
+			http.Error(w, "User cannot be-friend themself", http.StatusConflict)
 			return
 		}
 	}
@@ -1437,13 +1428,13 @@ func DeleteFriendRequest(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 	requesteeID := mux.Vars(r)["id"]
@@ -1451,12 +1442,12 @@ func DeleteFriendRequest(w http.ResponseWriter, r *http.Request) {
 	// Validate request parameters
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 	if err := uuid.Validate(requesteeID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid friend ID in route parameter", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in route parameter")
+		http.Error(w, "Invalid ID in route parameter", http.StatusBadRequest)
 		return
 	}
 
@@ -1473,7 +1464,7 @@ func DeleteFriendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	if rows == 0 {
 		env.Logger.ErrorContext(ctx, "No rows affected. Friend request not found.", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Outgoing friend request not found")
+		http.Error(w, "Outgoing friend request not found", http.StatusNotFound)
 		return
 	}
 
@@ -1495,13 +1486,13 @@ func UpdateFriendshipStatus(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -1524,12 +1515,12 @@ func UpdateFriendshipStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 	if err := uuid.Validate(requesterID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid friend ID in route parameter", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in route parameter")
+		http.Error(w, "Invalid ID in route parameter", http.StatusBadRequest)
 		return
 	}
 
@@ -1543,7 +1534,7 @@ func UpdateFriendshipStatus(w http.ResponseWriter, r *http.Request) {
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.Logger.ErrorContext(ctx, "Friendship not found. Nothing updated", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Friend request not found")
+		http.Error(w, "Friend request not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
@@ -1576,13 +1567,13 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -1596,7 +1587,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	if query == "" {
 		env.Logger.ErrorContext(ctx, "Missing query parameter 'q'")
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Query parameter 'q' is required")
+		http.Error(w, "Query parameter 'q' is required", http.StatusBadRequest)
 		return
 	}
 
@@ -1664,13 +1655,13 @@ func GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -1678,7 +1669,7 @@ func GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 
@@ -1689,7 +1680,7 @@ func GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
 	// something crazy has happened
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.ErrorContext(ctx, "User not found", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "User not found")
+		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
@@ -1728,13 +1719,13 @@ func GetUserByUsername(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	searcherID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 	username := mux.Vars(r)["username"]
@@ -1743,7 +1734,7 @@ func GetUserByUsername(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	if err := uuid.Validate(searcherID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 
@@ -1756,7 +1747,7 @@ func GetUserByUsername(w http.ResponseWriter, r *http.Request) {
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.ErrorContext(ctx, "User not found", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "User not found")
+		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
@@ -1797,13 +1788,13 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	searcherID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 	username := mux.Vars(r)["username"]
@@ -1812,7 +1803,7 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	if err := uuid.Validate(searcherID); err != nil {
 		env.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid ID in JWT")
+		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
 
@@ -1933,13 +1924,13 @@ func GetFriendsPlaylists(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -1947,7 +1938,7 @@ func GetFriendsPlaylists(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid user ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid user ID in JWT")
+		http.Error(w, "Invalid user ID in JWT", http.StatusBadRequest)
 		return
 	}
 
@@ -2022,13 +2013,13 @@ func UpdatePersonalProfile(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "JWT not found")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
 		return
 	}
 	userID, err := jwt.Claims.GetSubject()
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		writeErrorResponse(&w, ctx, env, http.StatusUnauthorized, "Invalid JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -2037,7 +2028,7 @@ func UpdatePersonalProfile(w http.ResponseWriter, r *http.Request) {
 	decoder.DisallowUnknownFields()
 	if err := hathrJson.DecodeJson(&requestBody, decoder); err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, err.Error())
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 
@@ -2045,28 +2036,28 @@ func UpdatePersonalProfile(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid user ID in JWT", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid user ID in JWT")
+		http.Error(w, "Invalid user ID in JWT", http.StatusBadRequest)
 		return
 	}
 	if requestBody.DisplayName == nil && requestBody.Username == nil && requestBody.Email == nil {
 		env.Logger.ErrorContext(ctx, "No fields to update")
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Must specify a field to update")
+		http.Error(w, "Must specify a field to update", http.StatusBadRequest)
 		return
 	}
 	if requestBody.Username != nil && !usernameRegex.MatchString(*requestBody.Username) {
 		env.Logger.ErrorContext(ctx, "Invalid username", slog.String("username", *requestBody.Username))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid username")
+		http.Error(w, "Invalid username", http.StatusBadRequest)
 		return
 	}
 	if requestBody.DisplayName != nil && !displayNameRegex.MatchString(*requestBody.DisplayName) {
 		env.Logger.ErrorContext(ctx, "Invalid display name", slog.String("display_name", *requestBody.DisplayName))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid display name")
+		http.Error(w, "Invalid display name", http.StatusBadRequest)
 		return
 	}
 	if requestBody.Email != nil {
 		if _, err := mail.ParseAddress(*requestBody.Email); err != nil {
 			env.Logger.ErrorContext(ctx, "Invalid email address", slog.String("email", *requestBody.Email))
-			writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid email address")
+			http.Error(w, "Invalid email address", http.StatusBadRequest)
 			return
 		}
 	}
@@ -2091,11 +2082,11 @@ func UpdatePersonalProfile(w http.ResponseWriter, r *http.Request) {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		env.ErrorContext(ctx, "Username already taken", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusConflict, "Username unavailable")
+		http.Error(w, "Username unavailable", http.StatusConflict)
 		return
 	} else if errors.Is(err, pgx.ErrNoRows) {
 		env.ErrorContext(ctx, "User not found")
-		writeErrorResponse(&w, ctx, env, http.StatusConflict, "User not found")
+		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	} else if err != nil {
 		env.ErrorContext(ctx, "Failed to update user profile", slog.Any("error", err))
@@ -2147,7 +2138,7 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid user ID in route parameter", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusBadRequest, "Invalid user ID in route parameter")
+		http.Error(w, "Invalid user ID in route parameter", http.StatusBadRequest)
 		return
 	}
 	validate := validator.New(validator.WithRequiredStructEnabled())
@@ -2161,7 +2152,7 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 	accessToken, err := retrieveSpotifyToken(uuid.MustParse(userID), env, ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.Logger.ErrorContext(ctx, "Spotify tokens not found for user", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusNotFound, "Spotify tokens not found for user")
+		http.Error(w, "Spotify tokens not found for user", http.StatusNotFound)
 		return
 	} else if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -2174,7 +2165,7 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 	var spotifyErr *spotifyErrors.SpotifyError
 	if errors.As(err, &spotifyErr) && spotifyErr.StatusCode == http.StatusUnauthorized {
 		env.Logger.ErrorContext(ctx, "Spotify rate limit exceeded", slog.Any("error", err))
-		writeErrorResponse(&w, ctx, env, http.StatusTooManyRequests, "Spotify rate limit exceeded")
+		http.Error(w, "Spotify rate limit exceeded", http.StatusTooManyRequests)
 		return
 	} else if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to retrieve recent plays from Spotify", slog.Any("error", err))

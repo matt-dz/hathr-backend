@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type LoginRequest struct {
@@ -204,4 +205,13 @@ type RecentlyPlayedTracksResponse struct {
 	Total   int           `json:"total"`
 	Items   []PlayHistory `json:"items"`
 	Context Context       `json:"context"`
+}
+
+type SpotifyTrackInput struct {
+	ID         string      `db:"id"`
+	Name       string      `db:"name"`
+	Artists    []string    `db:"artists"`
+	Popularity int         `db:"popularity"`
+	ImageURL   pgtype.Text `db:"image_url"`
+	Raw        []byte      `db:"raw"`
 }

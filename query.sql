@@ -317,17 +317,6 @@ SET
 FROM users u
 WHERE u.id = $5;
 
--- name: CreateSpotifyTrack :exec
-INSERT INTO spotify_tracks(id, name, artists, popularity, image_url, raw, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, NOW())
-ON CONFLICT (id) DO UPDATE
-    SET name = EXCLUDED.name,
-        artists = EXCLUDED.artists,
-        popularity = EXCLUDED.popularity,
-        image_url = EXCLUDED.image_url,
-        raw = EXCLUDED.raw,
-        updated_at = EXCLUDED.updated_at;
-
 -- name: CreateSpotifyPlay :exec
 INSERT INTO spotify_plays (user_id, track_id, played_at)
 VALUES ($1, $2, $3)
@@ -369,4 +358,30 @@ RETURNING id as playlist_id;
 INSERT INTO spotify_playlist_tracks (playlist_id, track_id)
 SELECT @playlist_id::UUID, t
 FROM unnest(@track_ids::TEXT[]) AS t
+ON CONFLICT DO NOTHING;
+
+-- name: CreateSpotifyTracks :exec
+INSERT INTO spotify_tracks (
+  id, name, artists, popularity,
+  image_url, raw, updated_at
+)
+SELECT
+  t.id,
+  t.name,
+  t.artists,
+  t.popularity,
+  t.image_url,
+  t.raw,
+  now()
+FROM unnest(@tracks::spotify_track_input[]) AS t(
+  id, name, artists, popularity, image_url, raw
+)
+ON CONFLICT DO NOTHING;
+
+-- name: CreateSpotifyPlays :exec
+INSERT INTO spotify_plays (user_id, track_id, played_at)
+SELECT @user_id::UUID, ids, played
+FROM
+    unnest(@ids::TEXT[]) AS ids,
+    unnest(@played::TIMESTAMPTZ[]) AS played
 ON CONFLICT DO NOTHING;

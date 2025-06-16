@@ -160,3 +160,12 @@ CREATE TABLE spotify_plays (
 
 CREATE INDEX idx_spotify_plays_user_played_at
   ON spotify_plays (user_id, played_at);
+
+CREATE TYPE spotify_track_input AS (
+    id         text,
+    name       text,
+    artists    text[],
+    popularity integer,
+    image_url  text,
+    raw        jsonb
+);

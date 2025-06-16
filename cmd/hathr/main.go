@@ -1,12 +1,11 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"hathr-backend/internal/api/middleware"
 	"hathr-backend/internal/database"
@@ -14,7 +13,7 @@ import (
 	"hathr-backend/internal/logging"
 
 	"github.com/gorilla/mux"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/net/context"
 )
 
 const defaultPort = "8080"
@@ -29,24 +28,21 @@ func main() {
 			})},
 	)
 
-	// Create database connection pool
-	logger.Info("Creating database connection pool")
-	pool, err := pgxpool.New(
-		context.Background(),
-		fmt.Sprintf(
-			"user=%s password=%s host=%s port=%s dbname=%s sslmode=disable",
-			os.Getenv("DB_USER"),
-			os.Getenv("DB_PASSWORD"),
-			os.Getenv("DB_HOST"),
-			os.Getenv("DB_PORT"),
-			os.Getenv("DB_NAME"),
-		),
-	)
-	if err != nil {
-		panic(err)
+	// Create db connection
+	logger.Info("Connectin to database")
+	dbUrl := os.Getenv("DB_URL")
+	if dbUrl == "" {
+		logger.Error("DB_URL environment variable is not set")
+		os.Exit(1)
 	}
-
-	env := hathrEnv.NewEnvironment(logger, database.NewDatabase(pool))
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
+	defer cancel()
+	db, err := database.NewDatabase(ctx, dbUrl)
+	if err != nil {
+		logger.Error("Failed to create database connection pool", "error", err)
+		os.Exit(1)
+	}
+	env := hathrEnv.NewEnvironment(logger, db)
 	defer env.Database.Close()
 
 	// Create HTTP Handler

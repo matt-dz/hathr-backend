@@ -19,3 +19,11 @@ sql:
             go_type:
               import: "github.com/google/uuid"
               type: "UUID"
+          - db_type: "spotify_track_input"
+            go_type:
+              import: "hathr-backend/internal/spotify/models"
+              type: "SpotifyTrackInput"
+          - db_type: "_spotify_track_input"
+            go_type:
+              import: "hathr-backend/internal/spotify/models"
+              type: "[]SpotifyTrackInput"

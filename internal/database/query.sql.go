@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"hathr-backend/internal/spotify/models"
 )
 
 const acceptFriendRequest = `-- name: AcceptFriendRequest :one
@@ -159,36 +160,47 @@ func (q *Queries) CreateSpotifyPlay(ctx context.Context, arg CreateSpotifyPlayPa
 	return err
 }
 
-const createSpotifyTrack = `-- name: CreateSpotifyTrack :exec
-INSERT INTO spotify_tracks(id, name, artists, popularity, image_url, raw, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, NOW())
-ON CONFLICT (id) DO UPDATE
-    SET name = EXCLUDED.name,
-        artists = EXCLUDED.artists,
-        popularity = EXCLUDED.popularity,
-        image_url = EXCLUDED.image_url,
-        raw = EXCLUDED.raw,
-        updated_at = EXCLUDED.updated_at
+const createSpotifyPlays = `-- name: CreateSpotifyPlays :exec
+INSERT INTO spotify_plays (user_id, track_id, played_at)
+SELECT $1::UUID, ids, played
+FROM
+    unnest($2::TEXT[]) AS ids,
+    unnest($3::TIMESTAMPTZ[]) AS played
+ON CONFLICT DO NOTHING
 `
 
-type CreateSpotifyTrackParams struct {
-	ID         string      `json:"id"`
-	Name       string      `json:"name"`
-	Artists    []string    `json:"artists"`
-	Popularity int32       `json:"popularity"`
-	ImageUrl   pgtype.Text `json:"image_url"`
-	Raw        []byte      `json:"raw"`
+type CreateSpotifyPlaysParams struct {
+	UserID uuid.UUID            `json:"user_id"`
+	Ids    []string             `json:"ids"`
+	Played []pgtype.Timestamptz `json:"played"`
 }
 
-func (q *Queries) CreateSpotifyTrack(ctx context.Context, arg CreateSpotifyTrackParams) error {
-	_, err := q.db.Exec(ctx, createSpotifyTrack,
-		arg.ID,
-		arg.Name,
-		arg.Artists,
-		arg.Popularity,
-		arg.ImageUrl,
-		arg.Raw,
-	)
+func (q *Queries) CreateSpotifyPlays(ctx context.Context, arg CreateSpotifyPlaysParams) error {
+	_, err := q.db.Exec(ctx, createSpotifyPlays, arg.UserID, arg.Ids, arg.Played)
+	return err
+}
+
+const createSpotifyTracks = `-- name: CreateSpotifyTracks :exec
+INSERT INTO spotify_tracks (
+  id, name, artists, popularity,
+  image_url, raw, updated_at
+)
+SELECT
+  t.id,
+  t.name,
+  t.artists,
+  t.popularity,
+  t.image_url,
+  t.raw,
+  now()
+FROM unnest($1::spotify_track_input[]) AS t(
+  id, name, artists, popularity, image_url, raw
+)
+ON CONFLICT DO NOTHING
+`
+
+func (q *Queries) CreateSpotifyTracks(ctx context.Context, tracks []models.SpotifyTrackInput) error {
+	_, err := q.db.Exec(ctx, createSpotifyTracks, tracks)
 	return err
 }
 

@@ -2131,7 +2131,6 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve spotify tokens
-	env.Logger.DebugContext(ctx, "Retrieving Spotify tokens from DB")
 	accessToken, err := retrieveSpotifyToken(uuid.MustParse(userID), env, ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		env.Logger.ErrorContext(ctx, "Spotify tokens not found for user", slog.Any("error", err))
@@ -2156,55 +2155,60 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	env.Logger.DebugContext(ctx, "Processing tracks")
-	for _, playHistory := range recentTracks.Items {
-		// Create the track in the database
-		env.Logger.DebugContext(ctx, "Creating track in DB", slog.String("track_id", playHistory.Track.ID))
+	// Create tracks
+	tracks := make([]spotifyModels.SpotifyTrackInput, len(recentTracks.Items))
+	ids := make([]string, len(recentTracks.Items))
+	played := make([]pgtype.Timestamptz, len(recentTracks.Items))
 
-		artists := make([]string, len(playHistory.Track.Artists))
-		for i, artist := range playHistory.Track.Artists {
-			artists[i] = artist.Name
+	env.Logger.DebugContext(ctx, "Processing tracks")
+	for i, playHistory := range recentTracks.Items {
+		ids[i] = playHistory.Track.ID
+		played[i] = pgtype.Timestamptz{
+			Time:  playHistory.PlayedAt,
+			Valid: true,
 		}
-		imgUrl := extractLargestImage(playHistory.Track.Album.Images)
+		artists := make([]string, len(playHistory.Track.Artists))
+		for j, artist := range playHistory.Track.Artists {
+			artists[j] = artist.Name
+		}
 		raw, err := json.Marshal(playHistory.Track)
 		if err != nil {
-			env.Logger.ErrorContext(ctx, "Failed to marshal track data", slog.Any("error", err), slog.String("track_id", playHistory.Track.ID))
+			env.Logger.ErrorContext(ctx, "Failed to marshal track data", slog.Any("error", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-
-		err = env.Database.CreateSpotifyTrack(ctx, database.CreateSpotifyTrackParams{
-			ID:   playHistory.Track.ID,
-			Name: playHistory.Track.Name,
-			ImageUrl: pgtype.Text{
-				String: imgUrl,
-				Valid:  imgUrl != "",
+		tracks[i] = spotifyModels.SpotifyTrackInput{
+			ID:      playHistory.Track.ID,
+			Name:    playHistory.Track.Name,
+			Artists: artists,
+			ImageURL: pgtype.Text{
+				String: extractLargestImage(playHistory.Track.Album.Images),
+				Valid:  true,
 			},
-			Artists:    artists,
-			Popularity: int32(playHistory.Track.Popularity),
+			Popularity: int(playHistory.Track.Popularity),
 			Raw:        raw,
-		})
-		if err != nil {
-			env.Logger.ErrorContext(ctx, "Failed to create track in DB", slog.Any("error", err), slog.String("track_id", playHistory.Track.ID))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
 		}
+	}
 
-		// Create play in db
-		env.Logger.DebugContext(ctx, "Creating play in DB", slog.String("track_id", playHistory.Track.ID))
-		err = env.Database.CreateSpotifyPlay(ctx, database.CreateSpotifyPlayParams{
-			UserID:  uuid.MustParse(userID),
-			TrackID: playHistory.Track.ID,
-			PlayedAt: pgtype.Timestamptz{
-				Time:  playHistory.PlayedAt,
-				Valid: true,
-			},
-		})
-		if err != nil {
-			env.Logger.ErrorContext(ctx, "Failed to create play in DB", slog.Any("error", err), slog.String("track_id", playHistory.Track.ID))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
+	// Insert tracks into the database
+	env.Logger.DebugContext(ctx, "Inserting tracks into DB")
+	err = env.Database.CreateSpotifyTracks(ctx, tracks)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to insert tracks into DB", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Insert plays into the database
+	env.Logger.DebugContext(ctx, "Inserting plays into DB")
+	err = env.Database.CreateSpotifyPlays(ctx, database.CreateSpotifyPlaysParams{
+		UserID: uuid.MustParse(userID),
+		Ids:    ids,
+		Played: played,
+	})
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
 
 	env.Logger.DebugContext(ctx, "Successfully updated Spotify plays")

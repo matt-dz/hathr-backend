@@ -12,11 +12,30 @@ type Database struct {
 	pool *pgxpool.Pool
 }
 
-func NewDatabase(pool *pgxpool.Pool) *Database {
+func NewDatabase(ctx context.Context, url string) (*Database, error) {
+	cfg, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		types, err := conn.LoadTypes(ctx, []string{"spotify_track_input", "_spotify_track_input"})
+		if err != nil {
+			return err
+		}
+		conn.TypeMap().RegisterTypes(types)
+		return nil
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Database{
 		Queries: New(pool),
 		pool:    pool,
-	}
+	}, nil
 }
 
 func (db *Database) Close() {

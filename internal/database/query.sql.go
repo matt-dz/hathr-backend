@@ -184,7 +184,7 @@ func (q *Queries) CreateSpotifyPlays(ctx context.Context, arg CreateSpotifyPlays
 const createSpotifyTracks = `-- name: CreateSpotifyTracks :exec
 INSERT INTO spotify_tracks (
   id, name, artists, popularity,
-  image_url, raw, updated_at
+  image_url, href, raw, updated_at
 )
 SELECT
   t.id,
@@ -192,10 +192,11 @@ SELECT
   t.artists,
   t.popularity,
   t.image_url,
+  t.href,
   t.raw,
   now()
 FROM unnest($1::spotify_track_input[]) AS t(
-  id, name, artists, popularity, image_url, raw
+  id, name, artists, popularity, image_url, href, raw
 )
 ON CONFLICT DO NOTHING
 `
@@ -529,7 +530,8 @@ SELECT
   st.id,
   st.name,
   st.artists,
-  st.image_url
+  st.image_url,
+  st.href
 FROM spotify_playlist_tracks ppt
 JOIN spotify_tracks st ON st.id = ppt.track_id
 WHERE ppt.playlist_id = $1
@@ -540,6 +542,7 @@ type GetSpotifyPlaylistTracksRow struct {
 	Name     string      `json:"name"`
 	Artists  []string    `json:"artists"`
 	ImageUrl pgtype.Text `json:"image_url"`
+	Href     string      `json:"href"`
 }
 
 func (q *Queries) GetSpotifyPlaylistTracks(ctx context.Context, playlistID uuid.UUID) ([]GetSpotifyPlaylistTracksRow, error) {
@@ -556,6 +559,7 @@ func (q *Queries) GetSpotifyPlaylistTracks(ctx context.Context, playlistID uuid.
 			&i.Name,
 			&i.Artists,
 			&i.ImageUrl,
+			&i.Href,
 		); err != nil {
 			return nil, err
 		}

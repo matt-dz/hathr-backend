@@ -233,6 +233,7 @@ type SpotifyTrack struct {
 	Name       string             `json:"name"`
 	Artists    []string           `json:"artists"`
 	Popularity int32              `json:"popularity"`
+	Href       string             `json:"href"`
 	ImageUrl   pgtype.Text        `json:"image_url"`
 	Raw        []byte             `json:"raw"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`

@@ -80,7 +80,8 @@ SELECT
   st.id,
   st.name,
   st.artists,
-  st.image_url
+  st.image_url,
+  st.href
 FROM spotify_playlist_tracks ppt
 JOIN spotify_tracks st ON st.id = ppt.track_id
 WHERE ppt.playlist_id = $1;
@@ -371,7 +372,7 @@ ON CONFLICT DO NOTHING;
 -- name: CreateSpotifyTracks :exec
 INSERT INTO spotify_tracks (
   id, name, artists, popularity,
-  image_url, raw, updated_at
+  image_url, href, raw, updated_at
 )
 SELECT
   t.id,
@@ -379,10 +380,11 @@ SELECT
   t.artists,
   t.popularity,
   t.image_url,
+  t.href,
   t.raw,
   now()
 FROM unnest(@tracks::spotify_track_input[]) AS t(
-  id, name, artists, popularity, image_url, raw
+  id, name, artists, popularity, image_url, href, raw
 )
 ON CONFLICT DO NOTHING;
 

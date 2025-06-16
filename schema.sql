@@ -138,6 +138,7 @@ CREATE TABLE spotify_tracks (
     name TEXT NOT NULL,
     artists TEXT[] NOT NULL,
     popularity INTEGER NOT NULL,
+    href TEXT NOT NULL,
     image_url TEXT,
     raw JSONB NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -166,5 +167,6 @@ CREATE TYPE spotify_track_input AS (
     artists    text[],
     popularity integer,
     image_url  text,
+    href       text,
     raw        jsonb
 );

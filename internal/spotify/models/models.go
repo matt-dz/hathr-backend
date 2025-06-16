@@ -213,5 +213,6 @@ type SpotifyTrackInput struct {
 	Artists    []string    `db:"artists"`
 	Popularity int         `db:"popularity"`
 	ImageURL   pgtype.Text `db:"image_url"`
+	Href       string      `db:"href"`
 	Raw        []byte      `db:"raw"`
 }

@@ -806,7 +806,7 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 			Name:   formatMonthlyPlaylistName(request.Month, request.Year),
 			Year:   int32(request.Year),
 			Month: pgtype.Int4{
-				Int32: int32(request.Month.Index()),
+				Int32: int32(request.Month.Index() + 1),
 				Valid: true,
 			},
 		})
@@ -992,7 +992,12 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if dbPlaylist.Playlist.Type == database.PlaylistTypeMonthly {
-		month := models.Month(dbPlaylist.Playlist.Month.Int32)
+		month, err := models.GetMonth(int(dbPlaylist.Playlist.Month.Int32))
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 		playlist.Month = &month
 	}
 
@@ -1006,6 +1011,7 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 			Name:     track.Name,
 			Artists:  track.Artists,
 			ImageURL: track.ImageUrl.String,
+			Href:     track.Href,
 		}
 	}
 
@@ -2205,6 +2211,7 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 			},
 			Popularity: int(playHistory.Track.Popularity),
 			Raw:        raw,
+			Href:       playHistory.Track.ExternalURLs.Spotify,
 		}
 	}
 

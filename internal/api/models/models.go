@@ -53,6 +53,7 @@ type SpotifyPlaylistTrack struct {
 	Name     string   `json:"name"`
 	Artists  []string `json:"artists"`
 	ImageURL string   `json:"image_url"`
+	Href     string   `json:"href"`
 }
 
 type SpotifyPlaylist struct {

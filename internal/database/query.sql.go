@@ -120,7 +120,8 @@ func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendReque
 const createMonthlySpotifyPlaylist = `-- name: CreateMonthlySpotifyPlaylist :one
 INSERT INTO playlists (user_id, name, type, visibility, year, month)
 VALUES ($1, $2, 'monthly', 'public', $3, $4)
-ON CONFLICT DO NOTHING
+ON CONFLICT (user_id, type, year, month) DO UPDATE
+    SET month = playlists.month -- no-op
 RETURNING id as playlist_id
 `
 
@@ -239,6 +240,33 @@ func (q *Queries) CreateSpotifyUser(ctx context.Context, arg CreateSpotifyUserPa
 	return i, err
 }
 
+const createWeeklySpotifyPlaylist = `-- name: CreateWeeklySpotifyPlaylist :one
+INSERT INTO playlists (user_id, name, type, visibility, year, week)
+VALUES ($1, $2, 'weekly', 'public', $3, $4)
+ON CONFLICT (user_id, type, year, week) DO UPDATE
+    SET week = playlists.week -- no-op
+RETURNING id as playlist_id
+`
+
+type CreateWeeklySpotifyPlaylistParams struct {
+	UserID uuid.UUID          `json:"user_id"`
+	Name   string             `json:"name"`
+	Year   int32              `json:"year"`
+	Week   pgtype.Timestamptz `json:"week"`
+}
+
+func (q *Queries) CreateWeeklySpotifyPlaylist(ctx context.Context, arg CreateWeeklySpotifyPlaylistParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createWeeklySpotifyPlaylist,
+		arg.UserID,
+		arg.Name,
+		arg.Year,
+		arg.Week,
+	)
+	var playlist_id uuid.UUID
+	err := row.Scan(&playlist_id)
+	return playlist_id, err
+}
+
 const deleteFriendRequest = `-- name: DeleteFriendRequest :execrows
 DELETE FROM friendships
     WHERE user_a_id = LEAST($1::uuid, $2::uuid) AND user_b_id = GREATEST($1::uuid, $2::uuid)
@@ -336,7 +364,7 @@ type GetFriendPlaylistsRow struct {
 	PlaylistType       PlaylistType       `json:"playlist_type"`
 	PlaylistName       string             `json:"playlist_name"`
 	PlaylistYear       int32              `json:"playlist_year"`
-	PlaylistWeek       pgtype.Int4        `json:"playlist_week"`
+	PlaylistWeek       pgtype.Timestamptz `json:"playlist_week"`
 	PlaylistMonth      pgtype.Int4        `json:"playlist_month"`
 	PlaylistCreatedAt  pgtype.Timestamptz `json:"playlist_created_at"`
 	PlaylistVisibility PlaylistVisibility `json:"playlist_visibility"`
@@ -424,7 +452,7 @@ type GetPersonalPlaylistsRow struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	Visibility PlaylistVisibility `json:"visibility"`
 	Year       int32              `json:"year"`
-	Week       pgtype.Int4        `json:"week"`
+	Week       pgtype.Timestamptz `json:"week"`
 	Month      pgtype.Int4        `json:"month"`
 	NumTracks  int64              `json:"num_tracks"`
 }
@@ -780,7 +808,7 @@ type GetUserPlaylistsRow struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	Visibility PlaylistVisibility `json:"visibility"`
 	Year       int32              `json:"year"`
-	Week       pgtype.Int4        `json:"week"`
+	Week       pgtype.Timestamptz `json:"week"`
 	Month      pgtype.Int4        `json:"month"`
 }
 

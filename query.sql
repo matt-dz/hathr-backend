@@ -351,7 +351,15 @@ FOR UPDATE OF t;
 -- name: CreateMonthlySpotifyPlaylist :one
 INSERT INTO playlists (user_id, name, type, visibility, year, month)
 VALUES ($1, $2, 'monthly', 'public', $3, $4)
-ON CONFLICT DO NOTHING
+ON CONFLICT (user_id, type, year, month) DO UPDATE
+    SET month = playlists.month -- no-op
+RETURNING id as playlist_id;
+
+-- name: CreateWeeklySpotifyPlaylist :one
+INSERT INTO playlists (user_id, name, type, visibility, year, week)
+VALUES ($1, $2, 'weekly', 'public', $3, $4)
+ON CONFLICT (user_id, type, year, week) DO UPDATE
+    SET week = playlists.week -- no-op
 RETURNING id as playlist_id;
 
 -- name: AddSpotifyPlaylistTracks :exec

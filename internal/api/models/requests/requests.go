@@ -14,10 +14,14 @@ type UpsertUser struct {
 	SpotifyUserID string `json:"spotify_user_id" validate:"required"`
 }
 
-type CreateMonthlyPlaylist struct {
-	Year     int             `json:"year" validate:"required,gte=2025,lte=9999"`
-	Month    models.Month    `json:"month" validate:"required"`
-	Provider models.Provider `json:"provider" validate:"required"`
+type CreatePlaylist struct {
+	Provider string `json:"provider" validate:"required,oneof=spotify"`
+	Type     string `json:"type" validate:"required,oneof=weekly monthly"`
+
+	Year  int          `json:"year" validate:"required_if=Type monthly"`
+	Month models.Month `json:"month" validate:"required_if=Type monthly"`
+
+	Week time.Time `json:"week" validate:"required_if=Type weekly"`
 }
 
 type GetUserPlaylists struct {

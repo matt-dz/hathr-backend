@@ -82,24 +82,23 @@ CREATE TABLE playlists (
     visibility playlist_visibility NOT NULL DEFAULT 'public',
 
     year INTEGER NOT NULL,
-    week INTEGER,
+    week TIMESTAMPTZ,
     month INTEGER,
 
     CONSTRAINT valid_playlist CHECK (
         CASE
           WHEN type = 'weekly'  THEN week IS NOT NULL
-                                  AND week BETWEEN 1 AND 52
-                                  AND month IS NULL
           WHEN type = 'monthly' THEN month IS NOT NULL
                                   AND month BETWEEN 1 AND 12
                                   AND week IS NULL
           ELSE true
         END
     ),
+    UNIQUE (user_id, type, year, month), -- Unique constraint for monthly playlists
+    UNIQUE (user_id, type, year, week), -- Unique constraint for weekly playlists
 
     PRIMARY KEY (id),
-    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-    UNIQUE (user_id, type, year, week, month)
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
 CREATE TABLE spotify_playlist_tracks(

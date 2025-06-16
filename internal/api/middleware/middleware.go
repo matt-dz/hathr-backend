@@ -304,7 +304,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	playlist := s.PathPrefix("/playlist").Subrouter()
 	playlist.Use(AuthorizeRequest)
 	playlist.Use(AuthorizeAdminRequest)
-	playlist.HandleFunc("/{user_id}/monthly/spotify", handlers.CreateMonthlyPlaylist).Methods("POST", "OPTIONS")
+	playlist.HandleFunc("/{user_id}/spotify", handlers.CreateSpotifyPlaylist).Methods("POST", "OPTIONS")
 
 	friendships := s.PathPrefix("/friendships").Subrouter()
 	friendships.Use(AuthorizeRequest)

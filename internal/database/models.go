@@ -199,7 +199,7 @@ type Playlist struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	Visibility PlaylistVisibility `json:"visibility"`
 	Year       int32              `json:"year"`
-	Week       pgtype.Int4        `json:"week"`
+	Week       pgtype.Timestamptz `json:"week"`
 	Month      pgtype.Int4        `json:"month"`
 }
 

@@ -41,19 +41,6 @@ func (m Month) Index() int {
 	return slices.Index(months[:], Month(strings.ToLower(string(m))))
 }
 
-type Provider string
-
-const (
-	ProviderSpotify Provider = "spotify"
-)
-
-func (p Provider) Validate() error {
-	if p != ProviderSpotify {
-		return fmt.Errorf("Invalid provider: %s", p)
-	}
-	return nil
-}
-
 func GetMonth(m int) (Month, error) {
 	if m <= 0 || m > len(months) {
 		return Month(""), fmt.Errorf("Month must be >= 1 and < 12. Received : %d", m)
@@ -75,9 +62,9 @@ type SpotifyPlaylist struct {
 	Year   int                    `json:"year"`
 	Name   string                 `json:"name"`
 
-	Type  string `json:"type"`
-	Month *Month `json:"month"`
-	Week  *int   `json:"week"`
+	Type  string     `json:"type"`
+	Month *Month     `json:"month"`
+	Week  *time.Time `json:"week"`
 
 	CreatedAt  time.Time                   `json:"created_at"`
 	Visibility database.PlaylistVisibility `json:"visibility"`
@@ -90,9 +77,9 @@ type PlaylistWithoutTracks struct {
 	Name      string    `json:"name"`
 	NumTracks int       `json:"num_tracks"`
 
-	Type  string `json:"type"`
-	Month *Month `json:"month"`
-	Week  *int   `json:"week"`
+	Type  string     `json:"type"`
+	Month *Month     `json:"month"`
+	Week  *time.Time `json:"week"`
 
 	CreatedAt  time.Time                   `json:"created_at"`
 	Visibility database.PlaylistVisibility `json:"visibility"`

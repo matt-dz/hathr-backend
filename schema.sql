@@ -34,6 +34,8 @@ CREATE TABLE users (
     PRIMARY KEY (id)
 );
 
+CREATE INDEX n_idx ON users (id); -- Useful for pagination
+
 CREATE INDEX users_username_trgm_gin
     ON users
     USING GIN (username gin_trgm_ops);

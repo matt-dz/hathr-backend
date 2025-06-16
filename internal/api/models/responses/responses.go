@@ -26,8 +26,8 @@ type GetUserPlaylists struct {
 }
 
 type GetPlaylist struct {
-	Playlist models.SpotifyPlaylist   `json:"playlist" validate:"required"`
-	User     models.PublicUser `json:"user" validate:"required"`
+	Playlist models.SpotifyPlaylist `json:"playlist" validate:"required"`
+	User     models.PublicUser      `json:"user" validate:"required"`
 }
 
 type ListFriends struct {
@@ -54,4 +54,9 @@ type UpdateFriendshipStatus struct {
 
 type GetFriendPlaylists struct {
 	Playlists []models.UserAndPlaylistWithoutTracks `json:"playlists"`
+}
+
+type ListRegisteredUsers struct {
+	IDs  []uuid.UUID `json:"ids"`
+	Next uuid.UUID   `json:"next,omitempty"`
 }

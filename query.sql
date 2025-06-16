@@ -395,3 +395,12 @@ FROM
     unnest(@ids::TEXT[]) AS ids,
     unnest(@played::TIMESTAMPTZ[]) AS played
 ON CONFLICT DO NOTHING;
+
+-- name: ListRegisteredUsers :many
+SELECT id FROM users
+WHERE
+    role = 'user' AND
+    registered_at IS NOT NULL AND
+    id > @after::UUID
+ORDER BY id ASC
+LIMIT @lim::INTEGER;

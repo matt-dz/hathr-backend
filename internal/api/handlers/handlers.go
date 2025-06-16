@@ -13,6 +13,7 @@ import (
 	"net/mail"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -2237,4 +2238,70 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 	}
 
 	env.Logger.DebugContext(ctx, "Successfully updated Spotify plays")
+}
+
+func ListRegisteredUsers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	limitQuery := r.URL.Query().Get("limit")
+	if limitQuery == "" {
+		limitQuery = "10" // Default limit if not provided
+	}
+
+	afterQuery := r.URL.Query().Get("after")
+	if afterQuery == "" {
+		afterQuery = uuid.Nil.String() // Default to nil UUID if not provided
+	}
+
+	// Validate request parameters
+	env.Logger.DebugContext(ctx, "Validating request parameters")
+	intLimit, err := strconv.Atoi(limitQuery)
+	if err != nil || intLimit <= 0 || intLimit > 100 {
+		env.Logger.ErrorContext(ctx, "Invalid limit", slog.Any("error", err))
+		http.Error(w, "Invalid limit", http.StatusBadRequest)
+		return
+	}
+
+	if err := uuid.Validate(afterQuery); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid after ID", slog.Any("error", err))
+		http.Error(w, "Invalid after ID", http.StatusBadRequest)
+		return
+	}
+
+	// Fetch registered users from the database
+	env.Logger.DebugContext(ctx, "Fetching registered users from DB")
+	ids, err := env.Database.ListRegisteredUsers(ctx, database.ListRegisteredUsersParams{
+		After: uuid.MustParse(afterQuery),
+		Lim:   int32(intLimit),
+	})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to list registered users", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Build response
+	env.Logger.DebugContext(ctx, "Building response")
+	response := responses.ListRegisteredUsers{
+		IDs: ids,
+	}
+	if ids == nil {
+		response.IDs = make([]uuid.UUID, 0)
+	}
+	if len(ids) != 0 {
+		response.Next = ids[len(ids)-1]
+	}
+
+	w.Header().Add("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode response", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 }

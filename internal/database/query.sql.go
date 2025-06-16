@@ -1058,6 +1058,41 @@ func (q *Queries) ListOutgoingRequests(ctx context.Context, userAID uuid.UUID) (
 	return items, nil
 }
 
+const listRegisteredUsers = `-- name: ListRegisteredUsers :many
+SELECT id FROM users
+WHERE
+    role = 'user' AND
+    registered_at IS NOT NULL AND
+    id > $1::UUID
+ORDER BY id ASC
+LIMIT $2::INTEGER
+`
+
+type ListRegisteredUsersParams struct {
+	After uuid.UUID `json:"after"`
+	Lim   int32     `json:"lim"`
+}
+
+func (q *Queries) ListRegisteredUsers(ctx context.Context, arg ListRegisteredUsersParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listRegisteredUsers, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRequests = `-- name: ListRequests :many
 SELECT
     u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,

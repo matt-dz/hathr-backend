@@ -404,3 +404,21 @@ WHERE
     id > @after::UUID
 ORDER BY id ASC
 LIMIT @lim::INTEGER;
+
+-- name: ReleaseMonthlyPlaylists :execrows
+UPDATE playlists
+SET visibility = 'public'
+WHERE
+    year = $1
+    AND month = $2
+    AND type = 'monthly'
+    AND visibility = 'unreleased';
+
+-- name: ReleaseWeeklyPlaylists :execrows
+UPDATE playlists
+SET visibility = 'public'
+WHERE
+    year = $1
+    AND week = $2
+    AND type = 'weekly'
+    AND visibility = 'unreleased';

@@ -18,8 +18,7 @@ func DecodeJson(dst interface{}, decoder *json.Decoder) error {
 	}
 
 	// Ensure no extra tokens after decoding
-	var dud interface{}
-	if err := decoder.Decode(&dud); err != io.EOF {
+	if _, err := decoder.Token(); err != io.EOF {
 		return errors.Join(DecodeJSONError, fmt.Errorf("Extraneous tokens found in request"))
 	}
 	return nil

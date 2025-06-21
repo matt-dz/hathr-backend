@@ -716,6 +716,7 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 	var request requests.CreatePlaylist
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
 	if err := hathrJson.DecodeJson(&request, decoder); err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -1067,6 +1068,7 @@ func UpdateVisibility(w http.ResponseWriter, r *http.Request) {
 	var req requests.UpdateVisibility
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
 	err = hathrJson.DecodeJson(&req, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
@@ -1364,6 +1366,7 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 	var friendRequest requests.CreateFriendRequest
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
 	err = hathrJson.DecodeJson(&friendRequest, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
@@ -1506,6 +1509,7 @@ func UpdateFriendshipStatus(w http.ResponseWriter, r *http.Request) {
 	var friendRequest requests.UpdateFriendshipStatus
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
 	err = hathrJson.DecodeJson(&friendRequest, decoder)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
@@ -2033,6 +2037,7 @@ func UpdatePersonalProfile(w http.ResponseWriter, r *http.Request) {
 	var requestBody requests.UpdateUserProfile
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
 	if err := hathrJson.DecodeJson(&requestBody, decoder); err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -2135,6 +2140,7 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 	var request requests.UpdateSpotifyPlays
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
 	if err := hathrJson.DecodeJson(&request, decoder); err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -2304,4 +2310,62 @@ func ListRegisteredUsers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+}
+
+func ReleasePlaylists(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	var body requests.ReleasePlaylists
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
+	hathrJson.DecodeJson(&body, decoder)
+
+	// Validate user ID
+	validate := validator.New()
+	if err := validate.Struct(body); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	// Release playlists in the database
+	var err error
+	var rows int64
+	if body.Type == "monthly" {
+		env.Logger.DebugContext(ctx, "Releasing monthly playlists in DB", slog.Int("year", body.Year), slog.String("month", string(body.Month)))
+		rows, err = env.Database.ReleaseMonthlyPlaylists(ctx, database.ReleaseMonthlyPlaylistsParams{
+			Year: int32(body.Year),
+			Month: pgtype.Int4{
+				Int32: int32(body.Month.Index() + 1),
+				Valid: true,
+			},
+		})
+	} else if body.Type == "weekly" {
+		env.Logger.DebugContext(ctx, "Releasing weekly playlists in DB", slog.Int("year", body.Year), slog.Time("week", body.Week))
+		rows, err = env.Database.ReleaseWeeklyPlaylists(ctx, database.ReleaseWeeklyPlaylistsParams{
+			Year: int32(body.Week.Year()),
+			Week: pgtype.Timestamptz{
+				Time:  body.Week,
+				Valid: true,
+			},
+		})
+	}
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to release playlists in DB", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	} else if rows == 0 {
+		env.Logger.ErrorContext(ctx, "No playlists released", slog.Int64("rows", rows))
+		http.Error(w, "No playlists released", http.StatusNotFound)
+		return
+	}
+
+	env.Logger.DebugContext(ctx, "Successfully released playlists")
 }

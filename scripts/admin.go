@@ -23,7 +23,7 @@ func main() {
 			})},
 	)
 
-	logger.Info("Connectin to database")
+	logger.Info("Connecting to database")
 	dbUrl := os.Getenv("DB_URL")
 	if dbUrl == "" {
 		logger.Error("DB_URL environment variable is not set")

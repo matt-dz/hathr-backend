@@ -1152,6 +1152,52 @@ func (q *Queries) ListRequests(ctx context.Context, userAID uuid.UUID) ([]ListRe
 	return items, nil
 }
 
+const releaseMonthlyPlaylists = `-- name: ReleaseMonthlyPlaylists :execrows
+UPDATE playlists
+SET visibility = 'public'
+WHERE
+    year = $1
+    AND month = $2
+    AND type = 'monthly'
+    AND visibility = 'unreleased'
+`
+
+type ReleaseMonthlyPlaylistsParams struct {
+	Year  int32       `json:"year"`
+	Month pgtype.Int4 `json:"month"`
+}
+
+func (q *Queries) ReleaseMonthlyPlaylists(ctx context.Context, arg ReleaseMonthlyPlaylistsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseMonthlyPlaylists, arg.Year, arg.Month)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const releaseWeeklyPlaylists = `-- name: ReleaseWeeklyPlaylists :execrows
+UPDATE playlists
+SET visibility = 'public'
+WHERE
+    year = $1
+    AND week = $2
+    AND type = 'weekly'
+    AND visibility = 'unreleased'
+`
+
+type ReleaseWeeklyPlaylistsParams struct {
+	Year int32              `json:"year"`
+	Week pgtype.Timestamptz `json:"week"`
+}
+
+func (q *Queries) ReleaseWeeklyPlaylists(ctx context.Context, arg ReleaseWeeklyPlaylistsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseWeeklyPlaylists, arg.Year, arg.Week)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const removeFriendship = `-- name: RemoveFriendship :execrows
 DELETE FROM friendships
     WHERE user_a_id = LEAST($1::uuid, $2::uuid) AND user_b_id = GREATEST($1::uuid, $2::uuid)

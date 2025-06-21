@@ -119,7 +119,7 @@ func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendReque
 
 const createMonthlySpotifyPlaylist = `-- name: CreateMonthlySpotifyPlaylist :one
 INSERT INTO playlists (user_id, name, type, visibility, year, month)
-VALUES ($1, $2, 'monthly', 'public', $3, $4)
+VALUES ($1, $2, 'monthly', 'unreleased', $3, $4)
 ON CONFLICT (user_id, type, year, month) DO UPDATE
     SET month = playlists.month -- no-op
 RETURNING id as playlist_id
@@ -243,7 +243,7 @@ func (q *Queries) CreateSpotifyUser(ctx context.Context, arg CreateSpotifyUserPa
 
 const createWeeklySpotifyPlaylist = `-- name: CreateWeeklySpotifyPlaylist :one
 INSERT INTO playlists (user_id, name, type, visibility, year, week)
-VALUES ($1, $2, 'weekly', 'public', $3, $4)
+VALUES ($1, $2, 'weekly', 'unreleased', $3, $4)
 ON CONFLICT (user_id, type, year, week) DO UPDATE
     SET week = playlists.week -- no-op
 RETURNING id as playlist_id
@@ -438,7 +438,7 @@ JOIN spotify_playlist_tracks ppt
     ON ppt.playlist_id = p.id
 JOIN spotify_tracks st
     ON st.id = ppt.track_id
-WHERE p.user_id = $1
+WHERE p.user_id = $1 AND p.visibility <> 'unreleased'
 GROUP BY
     p.id, p.type, p.name, p.user_id,
     p.created_at, p.visibility, p.year,

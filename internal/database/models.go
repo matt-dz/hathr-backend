@@ -100,9 +100,10 @@ func (ns NullPlaylistType) Value() (driver.Value, error) {
 type PlaylistVisibility string
 
 const (
-	PlaylistVisibilityPublic  PlaylistVisibility = "public"
-	PlaylistVisibilityFriends PlaylistVisibility = "friends"
-	PlaylistVisibilityPrivate PlaylistVisibility = "private"
+	PlaylistVisibilityPublic     PlaylistVisibility = "public"
+	PlaylistVisibilityFriends    PlaylistVisibility = "friends"
+	PlaylistVisibilityPrivate    PlaylistVisibility = "private"
+	PlaylistVisibilityUnreleased PlaylistVisibility = "unreleased"
 )
 
 func (e *PlaylistVisibility) Scan(src interface{}) error {

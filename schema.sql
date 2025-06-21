@@ -75,7 +75,7 @@ CREATE INDEX ON friendships (user_b_id, status);
 
 CREATE TYPE playlist_visibility
 AS
-ENUM('public', 'friends', 'private');
+ENUM('public', 'friends', 'private', 'unreleased');
 
 CREATE TYPE playlist_type AS ENUM(
     'weekly',
@@ -88,7 +88,7 @@ CREATE TABLE playlists (
     type playlist_type NOT NULL,
     name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now (),
-    visibility playlist_visibility NOT NULL DEFAULT 'public',
+    visibility playlist_visibility NOT NULL DEFAULT 'unreleased',
 
     year INTEGER NOT NULL,
     week TIMESTAMPTZ,

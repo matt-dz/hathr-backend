@@ -960,8 +960,8 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user is authorized to view the playlist
-	if dbPlaylist.Playlist.ID != uuid.MustParse(userID) &&
-		dbPlaylist.Playlist.Visibility != database.PlaylistVisibilityPublic {
+	if (dbPlaylist.Playlist.ID != uuid.MustParse(userID) &&
+		dbPlaylist.Playlist.Visibility != database.PlaylistVisibilityPublic) || dbPlaylist.Playlist.Visibility == database.PlaylistVisibilityUnreleased {
 		env.Logger.ErrorContext(ctx, "User not authorized to view playlist")
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 	}

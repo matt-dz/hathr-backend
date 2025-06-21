@@ -5,6 +5,13 @@ CREATE TYPE role AS ENUM(
     'admin'
 );
 
+CREATE TABLE private_keys (
+    kid SERIAL,
+    value TEXT NOT NULL,
+
+    PRIMARY KEY (kid)
+);
+
 CREATE TABLE users (
     id UUID DEFAULT gen_random_uuid (),
     display_name TEXT,
@@ -103,6 +110,20 @@ CREATE TABLE playlists (
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
+CREATE TABLE spotify_tracks (
+    id TEXT NOT NULL,
+
+    name TEXT NOT NULL,
+    artists TEXT[] NOT NULL,
+    popularity INTEGER NOT NULL,
+    href TEXT NOT NULL,
+    image_url TEXT,
+    raw JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (id)
+);
+
 CREATE TABLE spotify_playlist_tracks(
     playlist_id UUID NOT NULL,
     track_id TEXT NOT NULL,
@@ -112,13 +133,6 @@ CREATE TABLE spotify_playlist_tracks(
         ON DELETE CASCADE,
     FOREIGN KEY (track_id) REFERENCES spotify_tracks (id)
         ON DELETE CASCADE
-);
-
-CREATE TABLE private_keys (
-    kid SERIAL,
-    value TEXT NOT NULL,
-
-    PRIMARY KEY (kid)
 );
 
 CREATE TABLE spotify_tokens (
@@ -132,20 +146,6 @@ CREATE TABLE spotify_tokens (
     PRIMARY KEY(user_id),
     FOREIGN KEY (user_id) REFERENCES users (spotify_user_id)
         ON DELETE CASCADE
-);
-
-CREATE TABLE spotify_tracks (
-    id TEXT NOT NULL,
-
-    name TEXT NOT NULL,
-    artists TEXT[] NOT NULL,
-    popularity INTEGER NOT NULL,
-    href TEXT NOT NULL,
-    image_url TEXT,
-    raw JSONB NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-    PRIMARY KEY (id)
 );
 
 CREATE TABLE spotify_plays (

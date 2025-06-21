@@ -2,16 +2,15 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"hathr-backend/internal/argon2id"
 	"hathr-backend/internal/database"
 	"hathr-backend/internal/logging"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -24,23 +23,19 @@ func main() {
 			})},
 	)
 
+	logger.Info("Connectin to database")
+	dbUrl := os.Getenv("DB_URL")
+	if dbUrl == "" {
+		logger.Error("DB_URL environment variable is not set")
+		os.Exit(1)
+	}
 	logger.Debug("Creating database connection pool")
-	pool, err := pgxpool.New(
-		context.Background(),
-		fmt.Sprintf(
-			"user=%s password=%s host=%s port=%s dbname=%s sslmode=disable",
-			os.Getenv("DB_USER"),
-			os.Getenv("DB_PASSWORD"),
-			os.Getenv("DB_HOST"),
-			os.Getenv("DB_PORT"),
-			os.Getenv("DB_NAME"),
-		),
-	)
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
+	defer cancel()
+	db, err := database.NewDatabase(ctx, dbUrl)
 	if err != nil {
 		panic(err)
 	}
-
-	db := &database.Database{Queries: database.New(pool)}
 
 	// Hash password
 	logger.Debug("Hashing password")

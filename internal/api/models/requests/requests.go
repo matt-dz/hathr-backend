@@ -28,10 +28,6 @@ type GetUserPlaylists struct {
 	UserID uuid.UUID `json:"user_id" validate:"required"`
 }
 
-type GetPlaylist struct {
-	ID uuid.UUID `json:"id" validate:"required"`
-}
-
 type RefreshSession struct {
 	RefreshToken uuid.UUID `json:"refresh_token" validate:"required"`
 }

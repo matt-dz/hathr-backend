@@ -159,37 +159,6 @@ func AuthorizeRequest(next http.Handler) http.Handler {
 	})
 }
 
-func AuthorizeUserRequest(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
-		if !ok {
-			env = hathrEnv.Null()
-		}
-
-		authToken := r.Header.Get("Authorization")
-		rawJWT, found := strings.CutPrefix(authToken, "Bearer ")
-		if !found {
-			http.Error(w, "Auth token should be formatted as \"Bearer [token]\"", http.StatusUnauthorized)
-		}
-
-		env.Logger.DebugContext(r.Context(), "Validating JWT")
-		token, err := hathrJwt.ValidateJWT(rawJWT)
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			env.Logger.ErrorContext(r.Context(), "JWT expired", slog.Any("error", err))
-			http.Error(w, "Access token expired", http.StatusUnauthorized)
-			return
-		} else if err != nil {
-			env.Logger.ErrorContext(r.Context(), "Invalid JWT", slog.Any("error", err))
-			http.Error(w, "Invalid JWT", http.StatusUnauthorized)
-			return
-		}
-
-		env.Logger.DebugContext(r.Context(), "Successfully validated JWT")
-		r = r.WithContext(context.WithValue(r.Context(), "jwt", token))
-		next.ServeHTTP(w, r)
-	})
-}
-
 // Ensures admin claim is present and true in JWT
 func AuthorizeAdminRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

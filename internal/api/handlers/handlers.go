@@ -2305,6 +2305,16 @@ func ReleasePlaylists(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
+	if body.Day < 1 || body.Day > 31 {
+		env.Logger.ErrorContext(ctx, "Invalid day", slog.Int("day", int(body.Day)))
+		http.Error(w, "Invalid day", http.StatusBadRequest)
+		return
+	}
+	if body.Year < 2025 || body.Year > 9999 {
+		env.Logger.ErrorContext(ctx, "Invalid year", slog.Uint64("year", uint64(body.Year)))
+		http.Error(w, "Invalid year", http.StatusBadRequest)
+		return
+	}
 
 	// Release playlists in the database
 	var err error

@@ -3,7 +3,6 @@ package models
 import (
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -60,19 +59,6 @@ type PublicUser struct {
 	ID           string       `json:"id"`
 	Images       []Image      `json:"images"`
 	URI          string       `json:"uri"`
-}
-
-type PlaylistWithoutTracks struct {
-	ID         uuid.UUID `json:"id"`
-	UserID     uuid.UUID `json:"user_id"`
-	NumTracks  int       `json:"num_tracks"`
-	Type       string    `json:"type"`
-	Name       string    `json:"name"`
-	CreatedAt  time.Time `json:"created_at"`
-	Visibility string    `json:"visibility"`
-	Year       int       `json:"year"`
-	Week       *int      `json:"week"`
-	Month      *int      `json:"month"`
 }
 
 type Artist struct {

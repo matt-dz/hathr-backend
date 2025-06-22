@@ -118,18 +118,18 @@ func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendReque
 }
 
 const createMonthlySpotifyPlaylist = `-- name: CreateMonthlySpotifyPlaylist :one
-INSERT INTO playlists (user_id, name, type, visibility, year, month)
-VALUES ($1, $2, 'monthly', 'unreleased', $3, $4)
+INSERT INTO playlists (user_id, name, type, visibility, year, month, day)
+VALUES ($1, $2, 'monthly', 'unreleased', $3, $4, 1)
 ON CONFLICT (user_id, type, year, month) DO UPDATE
     SET month = playlists.month -- no-op
 RETURNING id as playlist_id
 `
 
 type CreateMonthlySpotifyPlaylistParams struct {
-	UserID uuid.UUID   `json:"user_id"`
-	Name   string      `json:"name"`
-	Year   int32       `json:"year"`
-	Month  pgtype.Int4 `json:"month"`
+	UserID uuid.UUID `json:"user_id"`
+	Name   string    `json:"name"`
+	Year   int32     `json:"year"`
+	Month  int32     `json:"month"`
 }
 
 func (q *Queries) CreateMonthlySpotifyPlaylist(ctx context.Context, arg CreateMonthlySpotifyPlaylistParams) (uuid.UUID, error) {
@@ -242,18 +242,19 @@ func (q *Queries) CreateSpotifyUser(ctx context.Context, arg CreateSpotifyUserPa
 }
 
 const createWeeklySpotifyPlaylist = `-- name: CreateWeeklySpotifyPlaylist :one
-INSERT INTO playlists (user_id, name, type, visibility, year, week)
-VALUES ($1, $2, 'weekly', 'unreleased', $3, $4)
-ON CONFLICT (user_id, type, year, week) DO UPDATE
-    SET week = playlists.week -- no-op
+INSERT INTO playlists (user_id, name, type, visibility, year, month, day)
+VALUES ($1, $2, 'weekly', 'unreleased', $3, $4, $5)
+ON CONFLICT (user_id, type, year, day) DO UPDATE
+    SET day = playlists.day -- no-op
 RETURNING id as playlist_id
 `
 
 type CreateWeeklySpotifyPlaylistParams struct {
-	UserID uuid.UUID          `json:"user_id"`
-	Name   string             `json:"name"`
-	Year   int32              `json:"year"`
-	Week   pgtype.Timestamptz `json:"week"`
+	UserID uuid.UUID `json:"user_id"`
+	Name   string    `json:"name"`
+	Year   int32     `json:"year"`
+	Month  int32     `json:"month"`
+	Day    int32     `json:"day"`
 }
 
 func (q *Queries) CreateWeeklySpotifyPlaylist(ctx context.Context, arg CreateWeeklySpotifyPlaylistParams) (uuid.UUID, error) {
@@ -261,7 +262,8 @@ func (q *Queries) CreateWeeklySpotifyPlaylist(ctx context.Context, arg CreateWee
 		arg.UserID,
 		arg.Name,
 		arg.Year,
-		arg.Week,
+		arg.Month,
+		arg.Day,
 	)
 	var playlist_id uuid.UUID
 	err := row.Scan(&playlist_id)
@@ -334,8 +336,8 @@ SELECT
     p.type AS playlist_type,
     p.name AS playlist_name,
     p.year AS playlist_year,
-    p.week AS playlist_week,
     p.month AS playlist_month,
+    p.day AS playlist_day,
     p.created_at AS playlist_created_at,
     p.visibility AS playlist_visibility,
     p.num_tracks
@@ -344,15 +346,16 @@ JOIN users u
     ON u.id = fr.friend_id
 LEFT JOIN LATERAL (
     SELECT
-        id, type, name, year, week,
+        id, type, name, year, day,
         month, created_at, visibility,
         COUNT(*) as num_tracks
     FROM playlists
     JOIN spotify_playlist_tracks ppt ON ppt.playlist_id = playlists.id
     WHERE user_id = fr.friend_id AND visibility = 'public'
     GROUP BY
-        id, type, name, year, week,
-        month, created_at, visibility
+        id, type, name, year, month,
+        day, created_at,
+        visibility
     ORDER BY created_at DESC
     LIMIT 1
 ) p ON true
@@ -365,8 +368,8 @@ type GetFriendPlaylistsRow struct {
 	PlaylistType       PlaylistType       `json:"playlist_type"`
 	PlaylistName       string             `json:"playlist_name"`
 	PlaylistYear       int32              `json:"playlist_year"`
-	PlaylistWeek       pgtype.Timestamptz `json:"playlist_week"`
-	PlaylistMonth      pgtype.Int4        `json:"playlist_month"`
+	PlaylistMonth      int32              `json:"playlist_month"`
+	PlaylistDay        int32              `json:"playlist_day"`
 	PlaylistCreatedAt  pgtype.Timestamptz `json:"playlist_created_at"`
 	PlaylistVisibility PlaylistVisibility `json:"playlist_visibility"`
 	NumTracks          int64              `json:"num_tracks"`
@@ -399,8 +402,8 @@ func (q *Queries) GetFriendPlaylists(ctx context.Context, userAID uuid.UUID) ([]
 			&i.PlaylistType,
 			&i.PlaylistName,
 			&i.PlaylistYear,
-			&i.PlaylistWeek,
 			&i.PlaylistMonth,
+			&i.PlaylistDay,
 			&i.PlaylistCreatedAt,
 			&i.PlaylistVisibility,
 			&i.NumTracks,
@@ -432,7 +435,8 @@ const getPersonalPlaylists = `-- name: GetPersonalPlaylists :many
 SELECT
     p.id, p.type, p.name, p.user_id,
     p.created_at, p.visibility, p.year,
-    p.week, p.month, COUNT(st) AS num_tracks
+    p.month, p.day,
+    COUNT(st) AS num_tracks
 FROM playlists p
 JOIN spotify_playlist_tracks ppt
     ON ppt.playlist_id = p.id
@@ -442,7 +446,7 @@ WHERE p.user_id = $1 AND p.visibility <> 'unreleased'
 GROUP BY
     p.id, p.type, p.name, p.user_id,
     p.created_at, p.visibility, p.year,
-    p.week, p.month
+    p.month, p.day
 `
 
 type GetPersonalPlaylistsRow struct {
@@ -453,8 +457,8 @@ type GetPersonalPlaylistsRow struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	Visibility PlaylistVisibility `json:"visibility"`
 	Year       int32              `json:"year"`
-	Week       pgtype.Timestamptz `json:"week"`
-	Month      pgtype.Int4        `json:"month"`
+	Month      int32              `json:"month"`
+	Day        int32              `json:"day"`
 	NumTracks  int64              `json:"num_tracks"`
 }
 
@@ -475,8 +479,8 @@ func (q *Queries) GetPersonalPlaylists(ctx context.Context, userID uuid.UUID) ([
 			&i.CreatedAt,
 			&i.Visibility,
 			&i.Year,
-			&i.Week,
 			&i.Month,
+			&i.Day,
 			&i.NumTracks,
 		); err != nil {
 			return nil, err
@@ -573,7 +577,7 @@ func (q *Queries) GetSpotifyPlaylistTracks(ctx context.Context, playlistID uuid.
 
 const getSpotifyPlaylistWithOwner = `-- name: GetSpotifyPlaylistWithOwner :one
 SELECT
-    p.id, p.user_id, p.type, p.name, p.created_at, p.visibility, p.year, p.week, p.month,
+    p.id, p.user_id, p.type, p.name, p.created_at, p.visibility, p.year, p.month, p.day,
     u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM playlists p
 JOIN users u
@@ -597,8 +601,8 @@ func (q *Queries) GetSpotifyPlaylistWithOwner(ctx context.Context, id uuid.UUID)
 		&i.Playlist.CreatedAt,
 		&i.Playlist.Visibility,
 		&i.Playlist.Year,
-		&i.Playlist.Week,
 		&i.Playlist.Month,
+		&i.Playlist.Day,
 		&i.User.ID,
 		&i.User.DisplayName,
 		&i.User.Username,
@@ -785,7 +789,7 @@ const getUserPlaylists = `-- name: GetUserPlaylists :many
 SELECT
     p.id, p.user_id, ARRAY_LENGTH(p.tracks, 1) AS num_tracks,
     p.type, p.name, p.created_at, p.visibility,
-    p.year, p.week, p.month
+    p.year, p.month, p.day
 FROM playlists p
 JOIN users u
     ON u.id = p.user_id
@@ -812,8 +816,8 @@ type GetUserPlaylistsRow struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	Visibility PlaylistVisibility `json:"visibility"`
 	Year       int32              `json:"year"`
-	Week       pgtype.Timestamptz `json:"week"`
-	Month      pgtype.Int4        `json:"month"`
+	Month      int32              `json:"month"`
+	Day        int32              `json:"day"`
 }
 
 func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsParams) ([]GetUserPlaylistsRow, error) {
@@ -834,8 +838,8 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsPara
 			&i.CreatedAt,
 			&i.Visibility,
 			&i.Year,
-			&i.Week,
 			&i.Month,
+			&i.Day,
 		); err != nil {
 			return nil, err
 		}
@@ -1163,8 +1167,8 @@ WHERE
 `
 
 type ReleaseMonthlyPlaylistsParams struct {
-	Year  int32       `json:"year"`
-	Month pgtype.Int4 `json:"month"`
+	Year  int32 `json:"year"`
+	Month int32 `json:"month"`
 }
 
 func (q *Queries) ReleaseMonthlyPlaylists(ctx context.Context, arg ReleaseMonthlyPlaylistsParams) (int64, error) {
@@ -1180,18 +1184,20 @@ UPDATE playlists
 SET visibility = 'public'
 WHERE
     year = $1
-    AND week = $2
+    AND month = $2
+    AND day = $3
     AND type = 'weekly'
     AND visibility = 'unreleased'
 `
 
 type ReleaseWeeklyPlaylistsParams struct {
-	Year int32              `json:"year"`
-	Week pgtype.Timestamptz `json:"week"`
+	Year  int32 `json:"year"`
+	Month int32 `json:"month"`
+	Day   int32 `json:"day"`
 }
 
 func (q *Queries) ReleaseWeeklyPlaylists(ctx context.Context, arg ReleaseWeeklyPlaylistsParams) (int64, error) {
-	result, err := q.db.Exec(ctx, releaseWeeklyPlaylists, arg.Year, arg.Week)
+	result, err := q.db.Exec(ctx, releaseWeeklyPlaylists, arg.Year, arg.Month, arg.Day)
 	if err != nil {
 		return 0, err
 	}

@@ -38,7 +38,8 @@ LIMIT 10;
 SELECT
     p.id, p.type, p.name, p.user_id,
     p.created_at, p.visibility, p.year,
-    p.week, p.month, COUNT(st) AS num_tracks
+    p.month, p.day,
+    COUNT(st) AS num_tracks
 FROM playlists p
 JOIN spotify_playlist_tracks ppt
     ON ppt.playlist_id = p.id
@@ -48,13 +49,13 @@ WHERE p.user_id = $1 AND p.visibility <> 'unreleased'
 GROUP BY
     p.id, p.type, p.name, p.user_id,
     p.created_at, p.visibility, p.year,
-    p.week, p.month;
+    p.month, p.day;
 
 -- name: GetUserPlaylists :many
 SELECT
     p.id, p.user_id, ARRAY_LENGTH(p.tracks, 1) AS num_tracks,
     p.type, p.name, p.created_at, p.visibility,
-    p.year, p.week, p.month
+    p.year, p.month, p.day
 FROM playlists p
 JOIN users u
     ON u.id = p.user_id
@@ -263,8 +264,8 @@ SELECT
     p.type AS playlist_type,
     p.name AS playlist_name,
     p.year AS playlist_year,
-    p.week AS playlist_week,
     p.month AS playlist_month,
+    p.day AS playlist_day,
     p.created_at AS playlist_created_at,
     p.visibility AS playlist_visibility,
     p.num_tracks
@@ -273,15 +274,16 @@ JOIN users u
     ON u.id = fr.friend_id
 LEFT JOIN LATERAL (
     SELECT
-        id, type, name, year, week,
+        id, type, name, year, day,
         month, created_at, visibility,
         COUNT(*) as num_tracks
     FROM playlists
     JOIN spotify_playlist_tracks ppt ON ppt.playlist_id = playlists.id
     WHERE user_id = fr.friend_id AND visibility = 'public'
     GROUP BY
-        id, type, name, year, week,
-        month, created_at, visibility
+        id, type, name, year, month,
+        day, created_at,
+        visibility
     ORDER BY created_at DESC
     LIMIT 1
 ) p ON true
@@ -350,17 +352,17 @@ WHERE u.id = $1
 FOR UPDATE OF t;
 
 -- name: CreateMonthlySpotifyPlaylist :one
-INSERT INTO playlists (user_id, name, type, visibility, year, month)
-VALUES ($1, $2, 'monthly', 'unreleased', $3, $4)
+INSERT INTO playlists (user_id, name, type, visibility, year, month, day)
+VALUES ($1, $2, 'monthly', 'unreleased', $3, $4, 1)
 ON CONFLICT (user_id, type, year, month) DO UPDATE
     SET month = playlists.month -- no-op
 RETURNING id as playlist_id;
 
 -- name: CreateWeeklySpotifyPlaylist :one
-INSERT INTO playlists (user_id, name, type, visibility, year, week)
-VALUES ($1, $2, 'weekly', 'unreleased', $3, $4)
-ON CONFLICT (user_id, type, year, week) DO UPDATE
-    SET week = playlists.week -- no-op
+INSERT INTO playlists (user_id, name, type, visibility, year, month, day)
+VALUES ($1, $2, 'weekly', 'unreleased', $3, $4, $5)
+ON CONFLICT (user_id, type, year, day) DO UPDATE
+    SET day = playlists.day -- no-op
 RETURNING id as playlist_id;
 
 -- name: AddSpotifyPlaylistTracks :exec
@@ -419,6 +421,7 @@ UPDATE playlists
 SET visibility = 'public'
 WHERE
     year = $1
-    AND week = $2
+    AND month = $2
+    AND day = $3
     AND type = 'weekly'
     AND visibility = 'unreleased';

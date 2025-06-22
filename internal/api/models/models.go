@@ -57,33 +57,29 @@ type SpotifyPlaylistTrack struct {
 }
 
 type SpotifyPlaylist struct {
-	ID     uuid.UUID              `json:"id"`
-	UserID uuid.UUID              `json:"user_id"`
-	Tracks []SpotifyPlaylistTrack `json:"tracks"`
-	Year   int                    `json:"year"`
-	Name   string                 `json:"name"`
-
-	Type  string     `json:"type"`
-	Month *Month     `json:"month"`
-	Week  *time.Time `json:"week"`
-
-	CreatedAt  time.Time                   `json:"created_at"`
+	Day        uint8                       `json:"day"`
+	Year       uint16                      `json:"year"`
+	Month      Month                       `json:"month"`
 	Visibility database.PlaylistVisibility `json:"visibility"`
+	CreatedAt  time.Time                   `json:"created_at"`
+	Tracks     []SpotifyPlaylistTrack      `json:"tracks"`
+	ID         uuid.UUID                   `json:"id"`
+	UserID     uuid.UUID                   `json:"user_id"`
+	Name       string                      `json:"name"`
+	Type       string                      `json:"type"`
 }
 
 type PlaylistWithoutTracks struct {
-	ID        uuid.UUID `json:"id"`
-	UserID    uuid.UUID `json:"user_id"`
-	Year      int       `json:"year"`
-	Name      string    `json:"name"`
-	NumTracks int       `json:"num_tracks"`
-
-	Type  string     `json:"type"`
-	Month *Month     `json:"month"`
-	Week  *time.Time `json:"week"`
-
-	CreatedAt  time.Time                   `json:"created_at"`
+	Day        uint8                       `json:"day"`
+	Year       uint16                      `json:"year"`
+	NumTracks  uint16                      `json:"num_tracks"`
+	Month      Month                       `json:"month"`
 	Visibility database.PlaylistVisibility `json:"visibility"`
+	CreatedAt  time.Time                   `json:"created_at"`
+	ID         uuid.UUID                   `json:"id"`
+	UserID     uuid.UUID                   `json:"user_id"`
+	Name       string                      `json:"name"`
+	Type       string                      `json:"type"`
 }
 
 type PublicUser struct {

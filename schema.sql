@@ -91,20 +91,22 @@ CREATE TABLE playlists (
     visibility playlist_visibility NOT NULL DEFAULT 'unreleased',
 
     year INTEGER NOT NULL,
-    week TIMESTAMPTZ,
-    month INTEGER,
+    month INTEGER NOT NULL,
+    day INTEGER NOT NULL,
 
-    CONSTRAINT valid_playlist CHECK (
+    CONSTRAINT valid_month CHECK (
+        month BETWEEN 1 AND 12
+    ),
+    CONSTRAINT valid_day CHECK (
         CASE
-          WHEN type = 'weekly'  THEN week IS NOT NULL
-          WHEN type = 'monthly' THEN month IS NOT NULL
-                                  AND month BETWEEN 1 AND 12
-                                  AND week IS NULL
+          WHEN type = 'weekly'  THEN day BETWEEN 1 AND 31
+          WHEN type = 'monthly' THEN day = 1
           ELSE true
         END
     ),
-    UNIQUE (user_id, type, year, month), -- Unique constraint for monthly playlists
-    UNIQUE (user_id, type, year, week), -- Unique constraint for weekly playlists
+
+    UNIQUE (user_id, type, year, month), -- Unique monthly playlists
+    UNIQUE (user_id, type, year, month, day), -- Unique weekly playlists
 
     PRIMARY KEY (id),
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE

@@ -200,8 +200,8 @@ type Playlist struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	Visibility PlaylistVisibility `json:"visibility"`
 	Year       int32              `json:"year"`
-	Week       pgtype.Timestamptz `json:"week"`
-	Month      pgtype.Int4        `json:"month"`
+	Month      int32              `json:"month"`
+	Day        int32              `json:"day"`
 }
 
 type PrivateKey struct {

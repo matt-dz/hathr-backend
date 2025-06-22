@@ -41,11 +41,11 @@ import (
 var usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_.]{1,20}$`)
 var displayNameRegex = regexp.MustCompile(`^.{1,50}$`)
 
-func formatWeeklyPlaylistName(week time.Time) string {
-	return week.Format("01/02/2006")
+func formatWeeklyPlaylistName(year uint16, month, day uint8) string {
+	return fmt.Sprintf("%d/%d/%d", month, day, year)
 }
 
-func formatMonthlyPlaylistName(month models.Month, year int) string {
+func formatMonthlyPlaylistName(month models.Month, year uint16) string {
 	return fmt.Sprintf("%s %d", string(month), year)
 }
 
@@ -732,17 +732,16 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if request.Type == "monthly" {
-		if request.Year < 2025 || request.Year > 9999 {
-			env.Logger.ErrorContext(ctx, "Invalid year", slog.Int("year", request.Year))
-			http.Error(w, "Year must be between 2025 and 9999", http.StatusBadRequest)
-			return
-		}
-		if err := request.Month.Validate(); err != nil {
-			env.Logger.ErrorContext(ctx, "Invalid month", slog.Any("error", err))
-			http.Error(w, "Invalid month", http.StatusBadRequest)
-			return
-		}
+	if err := request.Month.Validate(); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid month", slog.Any("error", err))
+		http.Error(w, "Invalid month", http.StatusBadRequest)
+		return
+	}
+
+	if request.Type == "weekly" && (request.Day < 1 || request.Day > 31) {
+		env.Logger.ErrorContext(ctx, "Invalid day", slog.Int("day", int(request.Day)))
+		http.Error(w, "Invalid day", http.StatusBadRequest)
+		return
 	}
 
 	if err := uuid.Validate(userID); err != nil {
@@ -756,11 +755,11 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 	var endDate time.Time
 	month := time.Month(request.Month.Index() + 1)
 	if request.Type == "monthly" {
-		startDate = time.Date(request.Year, month, 1, 0, 0, 0, 0, time.UTC)
+		startDate = time.Date(int(request.Year), month, 1, 0, 0, 0, 0, time.Local)
 		endDate = startDate.AddDate(0, 1, -1)
 	} else if request.Type == "weekly" {
-		startDate = request.Week
-		endDate = request.Week.AddDate(0, 0, 6)
+		startDate = time.Date(int(request.Year), month, int(request.Day), 0, 0, 0, 0, time.Local)
+		endDate = startDate.AddDate(0, 0, 6)
 	}
 	env.Logger.DebugContext(ctx, "Getting top songs from DB")
 	tracks, err := env.Database.GetTopSpotifyTracks(ctx, database.GetTopSpotifyTracksParams{
@@ -794,12 +793,10 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 		env.Logger.DebugContext(ctx, "Creating weekly playlist in DB")
 		playlistID, err = env.Database.CreateWeeklySpotifyPlaylist(ctx, database.CreateWeeklySpotifyPlaylistParams{
 			UserID: uuid.MustParse(userID),
-			Name:   formatWeeklyPlaylistName(request.Week),
-			Year:   int32(request.Week.Year()),
-			Week: pgtype.Timestamptz{
-				Time:  request.Week,
-				Valid: true,
-			},
+			Name:   formatWeeklyPlaylistName(request.Year, uint8(month), request.Day),
+			Year:   int32(request.Year),
+			Month:  int32(month),
+			Day:    int32(request.Day),
 		})
 	} else if request.Type == "monthly" {
 		env.Logger.DebugContext(ctx, "Creating monthly playlist in DB")
@@ -807,10 +804,7 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 			UserID: uuid.MustParse(userID),
 			Name:   formatMonthlyPlaylistName(request.Month, request.Year),
 			Year:   int32(request.Year),
-			Month: pgtype.Int4{
-				Int32: int32(request.Month.Index() + 1),
-				Valid: true,
-			},
+			Month:  int32(month),
 		})
 	}
 	if err != nil {
@@ -876,28 +870,24 @@ func GetPersonalPlaylists(w http.ResponseWriter, r *http.Request) {
 	}
 	for i, dbPlaylist := range dbPlaylists {
 		response.Playlists[i] = models.PlaylistWithoutTracks{
+			Day:        uint8(dbPlaylist.Day),
+			Year:       uint16(dbPlaylist.Year),
+			NumTracks:  uint16(dbPlaylist.NumTracks),
+			Visibility: dbPlaylist.Visibility,
+			CreatedAt:  dbPlaylist.CreatedAt.Time,
 			ID:         dbPlaylist.ID,
 			UserID:     dbPlaylist.UserID,
-			Year:       int(dbPlaylist.Year),
 			Name:       dbPlaylist.Name,
-			NumTracks:  int(dbPlaylist.NumTracks),
 			Type:       string(dbPlaylist.Type),
-			CreatedAt:  dbPlaylist.CreatedAt.Time,
-			Visibility: dbPlaylist.Visibility,
-			Month:      nil,
-			Week:       nil,
 		}
-		if dbPlaylist.Type == database.PlaylistTypeMonthly {
-			month, err := models.GetMonth(int(dbPlaylist.Month.Int32))
-			if err != nil {
-				env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
-				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-				return
-			}
-			response.Playlists[i].Month = &month
-		} else {
-			response.Playlists[i].Week = &dbPlaylist.Week.Time
+
+		month, err := models.GetMonth(int(dbPlaylist.Month))
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
 		}
+		response.Playlists[i].Month = month
 	}
 
 	// Encode playlists
@@ -979,33 +969,24 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	// Build playlist response
 	env.Logger.DebugContext(ctx, "Building playlist response")
 	playlist := models.SpotifyPlaylist{
-		ID:     dbPlaylist.Playlist.ID,
-		UserID: dbPlaylist.Playlist.UserID,
-		Year:   int(dbPlaylist.Playlist.Year),
-		Name:   dbPlaylist.Playlist.Name,
-		Tracks: make([]models.SpotifyPlaylistTrack, len(tracks)),
-
-		Type:  string(dbPlaylist.Playlist.Type),
-		Week:  nil,
-		Month: nil,
-
-		CreatedAt:  dbPlaylist.Playlist.CreatedAt.Time,
+		Day:        uint8(dbPlaylist.Playlist.Day),
+		Year:       uint16(dbPlaylist.Playlist.Year),
 		Visibility: dbPlaylist.Playlist.Visibility,
+		CreatedAt:  dbPlaylist.Playlist.CreatedAt.Time,
+		Tracks:     make([]models.SpotifyPlaylistTrack, len(tracks)),
+		ID:         dbPlaylist.Playlist.ID,
+		UserID:     dbPlaylist.Playlist.UserID,
+		Name:       dbPlaylist.Playlist.Name,
+		Type:       string(dbPlaylist.Playlist.Type),
 	}
 
-	if dbPlaylist.Playlist.Type == database.PlaylistTypeMonthly {
-		month, err := models.GetMonth(int(dbPlaylist.Playlist.Month.Int32))
-		if err != nil {
-			env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-		playlist.Month = &month
+	month, err := models.GetMonth(int(dbPlaylist.Playlist.Month))
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
-
-	if dbPlaylist.Playlist.Type == database.PlaylistTypeWeekly {
-		playlist.Week = &dbPlaylist.Playlist.Week.Time
-	}
+	playlist.Month = month
 
 	for i, track := range tracks {
 		playlist.Tracks[i] = models.SpotifyPlaylistTrack{
@@ -1839,28 +1820,23 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 	}
 	for i, dbPlaylist := range dbPlaylists {
 		response.Playlists[i] = models.PlaylistWithoutTracks{
+			Day:        uint8(dbPlaylist.Day),
+			Year:       uint16(dbPlaylist.Year),
+			NumTracks:  uint16(dbPlaylist.NumTracks),
+			Visibility: dbPlaylist.Visibility,
+			CreatedAt:  dbPlaylist.CreatedAt.Time,
 			ID:         dbPlaylist.ID,
 			UserID:     dbPlaylist.UserID,
-			NumTracks:  int(dbPlaylist.NumTracks),
-			Year:       int(dbPlaylist.Year),
 			Name:       dbPlaylist.Name,
 			Type:       string(dbPlaylist.Type),
-			CreatedAt:  dbPlaylist.CreatedAt.Time,
-			Visibility: dbPlaylist.Visibility,
-			Month:      nil,
-			Week:       nil,
 		}
-		if dbPlaylist.Type == database.PlaylistTypeMonthly {
-			month, err := models.GetMonth(int(dbPlaylist.Month.Int32))
-			if err != nil {
-				env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
-				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-				return
-			}
-			response.Playlists[i].Month = &month
-		} else {
-			response.Playlists[i].Week = &dbPlaylist.Week.Time
+		month, err := models.GetMonth(int(dbPlaylist.Month))
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
 		}
+		response.Playlists[i].Month = month
 	}
 
 	// Encode response
@@ -1975,30 +1951,25 @@ func GetFriendsPlaylists(w http.ResponseWriter, r *http.Request) {
 		response[i] = models.UserAndPlaylistWithoutTracks{
 			User: user,
 			Playlist: models.PlaylistWithoutTracks{
+				Day:        uint8(row.PlaylistDay),
+				Year:       uint16(row.PlaylistYear),
+				NumTracks:  uint16(row.NumTracks),
+				Visibility: row.PlaylistVisibility,
+				CreatedAt:  row.PlaylistCreatedAt.Time,
 				ID:         row.PlaylistID,
 				UserID:     row.User.ID,
-				Year:       int(row.PlaylistYear),
 				Name:       row.PlaylistName,
 				Type:       string(row.PlaylistType),
-				NumTracks:  int(row.NumTracks),
-				CreatedAt:  row.PlaylistCreatedAt.Time,
-				Visibility: row.PlaylistVisibility,
-				Week:       nil,
-				Month:      nil,
 			},
 		}
 
-		if row.PlaylistType == database.PlaylistTypeMonthly {
-			month, err := models.GetMonth(int(row.PlaylistMonth.Int32))
-			if err != nil {
-				env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
-				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-				return
-			}
-			response[i].Playlist.Month = &month
-		} else if row.PlaylistType == database.PlaylistTypeWeekly {
-			response[i].Playlist.Week = &row.PlaylistWeek.Time
+		month, err := models.GetMonth(int(row.PlaylistMonth))
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
 		}
+		response[i].Playlist.Month = month
 	}
 
 	// Encode response
@@ -2339,22 +2310,17 @@ func ReleasePlaylists(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var rows int64
 	if body.Type == "monthly" {
-		env.Logger.DebugContext(ctx, "Releasing monthly playlists in DB", slog.Int("year", body.Year), slog.String("month", string(body.Month)))
+		env.Logger.DebugContext(ctx, "Releasing monthly playlists in DB", slog.Uint64("year", uint64(body.Year)), slog.String("month", string(body.Month)))
 		rows, err = env.Database.ReleaseMonthlyPlaylists(ctx, database.ReleaseMonthlyPlaylistsParams{
-			Year: int32(body.Year),
-			Month: pgtype.Int4{
-				Int32: int32(body.Month.Index() + 1),
-				Valid: true,
-			},
+			Year:  int32(body.Year),
+			Month: int32(body.Month.Index() + 1),
 		})
 	} else if body.Type == "weekly" {
-		env.Logger.DebugContext(ctx, "Releasing weekly playlists in DB", slog.Int("year", body.Year), slog.Time("week", body.Week))
+		env.Logger.DebugContext(ctx, "Releasing weekly playlists in DB", slog.Int("year", int(body.Year)), slog.String("month", string(body.Month)), slog.Int("day", int(body.Day)))
 		rows, err = env.Database.ReleaseWeeklyPlaylists(ctx, database.ReleaseWeeklyPlaylistsParams{
-			Year: int32(body.Week.Year()),
-			Week: pgtype.Timestamptz{
-				Time:  body.Week,
-				Valid: true,
-			},
+			Year:  int32(body.Year),
+			Month: int32(body.Month.Index() + 1),
+			Day:   int32(body.Day),
 		})
 	}
 	if err != nil {

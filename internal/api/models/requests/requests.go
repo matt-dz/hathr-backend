@@ -15,13 +15,12 @@ type UpsertUser struct {
 }
 
 type CreatePlaylist struct {
+	Year  uint16       `json:"year" validate:"required,gte=2025,lte=9999"`
+	Day   uint8        `json:"day" validate:"required_if=Type weekly,excluded_if=Type monthly"`
+	Month models.Month `json:"month" validate:"required"`
+
 	Provider string `json:"provider" validate:"required,oneof=spotify"`
 	Type     string `json:"type" validate:"required,oneof=weekly monthly"`
-
-	Year  int          `json:"year" validate:"required_if=Type monthly"`
-	Month models.Month `json:"month" validate:"required_if=Type monthly"`
-
-	Week time.Time `json:"week" validate:"required_if=Type weekly"`
 }
 
 type GetUserPlaylists struct {
@@ -64,11 +63,10 @@ type UpdateSpotifyPlays struct {
 }
 
 type ReleasePlaylists struct {
-	Provider string `json:"provider" validate:"required,oneof=spotify"`
-	Type     string `json:"type" validate:"required,oneof=weekly monthly"`
-
-	Year  int          `json:"year" validate:"required_if=Type monthly"`
+	Day   uint8        `json:"day" validate:"required_if=Type weekly"`
+	Year  uint16       `json:"year" validate:"required"`
 	Month models.Month `json:"month" validate:"required_if=Type monthly"`
 
-	Week time.Time `json:"week" validate:"required_if=Type weekly"`
+	Provider string `json:"provider" validate:"required,oneof=spotify"`
+	Type     string `json:"type" validate:"required,oneof=weekly monthly"`
 }

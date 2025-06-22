@@ -16,7 +16,7 @@ type UpsertUser struct {
 
 type CreatePlaylist struct {
 	Year  uint16       `json:"year" validate:"required,gte=2025,lte=9999"`
-	Day   uint8        `json:"day" validate:"required_if=Type weekly,excluded_if=Type monthly"`
+	Day   uint8        `json:"day" validate:"required_if=Type weekly,excluded_unless=Type weekly"`
 	Month models.Month `json:"month" validate:"required"`
 
 	Provider string `json:"provider" validate:"required,oneof=spotify"`
@@ -63,10 +63,14 @@ type UpdateSpotifyPlays struct {
 }
 
 type ReleasePlaylists struct {
-	Day   uint8        `json:"day" validate:"required_if=Type weekly"`
+	Day   uint8        `json:"day" validate:"required_if=Type weekly,excluded_unless=Type weekly"`
 	Year  uint16       `json:"year" validate:"required"`
-	Month models.Month `json:"month" validate:"required_if=Type monthly"`
+	Month models.Month `json:"month" validate:"required"`
 
 	Provider string `json:"provider" validate:"required,oneof=spotify"`
 	Type     string `json:"type" validate:"required,oneof=weekly monthly"`
+}
+
+type CreatePlaylistImage struct {
+	ID uuid.UUID `json:"id" validate:"required"`
 }

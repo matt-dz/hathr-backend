@@ -518,6 +518,33 @@ func (q *Queries) GetPersonalProfile(ctx context.Context, id uuid.UUID) (User, e
 	return i, err
 }
 
+const getPlaylistDateAndType = `-- name: GetPlaylistDateAndType :one
+SELECT year, month, day, type, image_url
+FROM playlists
+WHERE id = $1
+`
+
+type GetPlaylistDateAndTypeRow struct {
+	Year     int32        `json:"year"`
+	Month    int32        `json:"month"`
+	Day      int32        `json:"day"`
+	Type     PlaylistType `json:"type"`
+	ImageUrl pgtype.Text  `json:"image_url"`
+}
+
+func (q *Queries) GetPlaylistDateAndType(ctx context.Context, id uuid.UUID) (GetPlaylistDateAndTypeRow, error) {
+	row := q.db.QueryRow(ctx, getPlaylistDateAndType, id)
+	var i GetPlaylistDateAndTypeRow
+	err := row.Scan(
+		&i.Year,
+		&i.Month,
+		&i.Day,
+		&i.Type,
+		&i.ImageUrl,
+	)
+	return i, err
+}
+
 const getPrivateKey = `-- name: GetPrivateKey :one
 SELECT value FROM private_keys WHERE kid = $1
 `
@@ -577,7 +604,7 @@ func (q *Queries) GetSpotifyPlaylistTracks(ctx context.Context, playlistID uuid.
 
 const getSpotifyPlaylistWithOwner = `-- name: GetSpotifyPlaylistWithOwner :one
 SELECT
-    p.id, p.user_id, p.type, p.name, p.created_at, p.visibility, p.year, p.month, p.day,
+    p.id, p.user_id, p.type, p.name, p.created_at, p.visibility, p.image_url, p.year, p.month, p.day,
     u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM playlists p
 JOIN users u
@@ -600,6 +627,7 @@ func (q *Queries) GetSpotifyPlaylistWithOwner(ctx context.Context, id uuid.UUID)
 		&i.Playlist.Name,
 		&i.Playlist.CreatedAt,
 		&i.Playlist.Visibility,
+		&i.Playlist.ImageUrl,
 		&i.Playlist.Year,
 		&i.Playlist.Month,
 		&i.Playlist.Day,

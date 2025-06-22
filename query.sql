@@ -425,3 +425,8 @@ WHERE
     AND day = $3
     AND type = 'weekly'
     AND visibility = 'unreleased';
+
+-- name: GetPlaylistDateAndType :one
+SELECT year, month, day, type, image_url
+FROM playlists
+WHERE id = $1;

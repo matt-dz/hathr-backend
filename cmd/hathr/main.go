@@ -10,6 +10,7 @@ import (
 	"hathr-backend/internal/api/middleware"
 	"hathr-backend/internal/database"
 	hathrEnv "hathr-backend/internal/env"
+	hathrHttp "hathr-backend/internal/http"
 	"hathr-backend/internal/logging"
 
 	"github.com/gorilla/mux"
@@ -42,7 +43,7 @@ func main() {
 		logger.Error("Failed to create database connection pool", "error", err)
 		os.Exit(1)
 	}
-	env := hathrEnv.NewEnvironment(logger, db)
+	env := hathrEnv.New(logger, db, hathrHttp.New())
 	defer env.Database.Close()
 
 	// Create HTTP Handler

@@ -199,6 +199,7 @@ type Playlist struct {
 	Name       string             `json:"name"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	Visibility PlaylistVisibility `json:"visibility"`
+	ImageUrl   pgtype.Text        `json:"image_url"`
 	Year       int32              `json:"year"`
 	Month      int32              `json:"month"`
 	Day        int32              `json:"day"`

@@ -280,6 +280,11 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	playlist.Use(AuthorizeAdminRequest)
 	playlist.HandleFunc("/{user_id}/spotify", handlers.CreateSpotifyPlaylist).Methods("POST", "OPTIONS")
 
+	playlistImage := s.PathPrefix("/playlist-image").Subrouter()
+	playlistImage.Use(AuthorizeRequest)
+	playlistImage.Use(AuthorizeAdminRequest)
+	playlistImage.HandleFunc("", handlers.CreatePlaylistCover).Methods("POST", "OPTIONS")
+
 	friendships := s.PathPrefix("/friendships").Subrouter()
 	friendships.Use(AuthorizeRequest)
 	friendships.HandleFunc("", handlers.ListFriends).Methods("GET", "OPTIONS")
@@ -305,5 +310,4 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	users.Use(AuthorizeAdminRequest)
 	users.HandleFunc("", handlers.ListRegisteredUsers).Methods("GET", "OPTIONS")
 	users.HandleFunc("/{id}/plays/spotify", handlers.UpdateSpotifyPlays).Methods("POST", "OPTIONS")
-
 }

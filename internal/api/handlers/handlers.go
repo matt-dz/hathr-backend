@@ -21,12 +21,13 @@ import (
 	"hathr-backend/internal/api/models/requests"
 	"hathr-backend/internal/api/models/responses"
 	"hathr-backend/internal/argon2id"
+	"hathr-backend/internal/covers"
 	"hathr-backend/internal/database"
 	hathrEnv "hathr-backend/internal/env"
+	hathrHttp "hathr-backend/internal/http"
 	hathrJson "hathr-backend/internal/json"
 	hathrJWT "hathr-backend/internal/jwt"
 	hathrSpotify "hathr-backend/internal/spotify"
-	spotifyErrors "hathr-backend/internal/spotify/errors"
 	spotifyModels "hathr-backend/internal/spotify/models"
 
 	"github.com/go-playground/validator/v10"
@@ -242,7 +243,7 @@ func ServeSpotifyOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 		env = hathrEnv.Null()
 	}
 
-	env.DebugContext(ctx, "Encoding metadata")
+	env.Logger.DebugContext(ctx, "Encoding metadata")
 	w.Header().Add("Content-Type", "application/json")
 	err := json.NewEncoder(w).Encode(map[string]string{
 		"client_id":    os.Getenv("SPOTIFY_CLIENT_ID"),
@@ -250,7 +251,7 @@ func ServeSpotifyOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 		"scope":        "user-read-private user-read-email user-library-read user-top-read user-read-recently-played",
 	})
 	if err != nil {
-		env.ErrorContext(ctx, "Failed to encode metadata", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Failed to encode metadata", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
@@ -285,7 +286,7 @@ func AdminLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Login admin
-	env.DebugContext(ctx, "Retrieving user from DB")
+	env.Logger.DebugContext(ctx, "Retrieving user from DB")
 	user, err := env.Database.GetAdminUser(ctx,
 		pgtype.Text{
 			String: loginRequest.Username,
@@ -293,36 +294,36 @@ func AdminLogin(w http.ResponseWriter, r *http.Request) {
 		})
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		env.ErrorContext(ctx, "Unable to get user. Invalid credentials", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Unable to get user. Invalid credentials", slog.Any("error", err))
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	} else if err != nil {
-		env.ErrorContext(ctx, "Failed to login admin", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Failed to login admin", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
 	// Decode password hash
-	env.DebugContext(ctx, "Decoding password hash")
+	env.Logger.DebugContext(ctx, "Decoding password hash")
 	argonParams, salt, trueHash, err := argon2id.DecodeHash(user.Password.String)
 	if err != nil {
-		env.ErrorContext(ctx, "Failed to decode password hash", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Failed to decode password hash", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
 	// Hash given password
-	env.DebugContext(ctx, "Hashing given password")
+	env.Logger.DebugContext(ctx, "Hashing given password")
 	givenHash := argon2id.HashWithSalt(loginRequest.Password, *argonParams, salt)
 
 	// Compare hashes
-	env.DebugContext(ctx, "Comparing hashes")
+	env.Logger.DebugContext(ctx, "Comparing hashes")
 	if subtle.ConstantTimeCompare(givenHash, trueHash) == 0 {
-		env.ErrorContext(ctx, "Invalid credentials", slog.String("username", loginRequest.Username))
+		env.Logger.ErrorContext(ctx, "Invalid credentials", slog.String("username", loginRequest.Username))
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
-	env.DebugContext(ctx, "Successfully logged in admin")
+	env.Logger.DebugContext(ctx, "Successfully logged in admin")
 
 	// Retrieve private key for JWT signing
 	env.Logger.DebugContext(ctx, "Retrieving private key")
@@ -459,12 +460,12 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 		if err != nil {
-			env.ErrorContext(ctx, "Unable to update user image", slog.Any("error", err))
+			env.Logger.ErrorContext(ctx, "Unable to update user image", slog.Any("error", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		} else if rows == 0 {
 			// sanity check - this shouldn't be possible
-			env.ErrorContext(ctx, "No rows updated when updating user image", slog.Any("error", err))
+			env.Logger.ErrorContext(ctx, "No rows updated when updating user image", slog.Any("error", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
@@ -776,13 +777,13 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		env.ErrorContext(ctx, "Failed to get top tracks from DB", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Failed to get top tracks from DB", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
 	if len(tracks) == 0 {
-		env.DebugContext(ctx, "No recently listened to tracks. Not creating a playlist")
+		env.Logger.DebugContext(ctx, "No recently listened to tracks. Not creating a playlist")
 		http.Error(w, "No recently listened to tracks", http.StatusConflict)
 		return
 	}
@@ -808,7 +809,7 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err != nil {
-		env.ErrorContext(ctx, "Failed to create playlist in DB", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Failed to create playlist in DB", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -824,7 +825,7 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 		TrackIds:   trackIDs,
 	})
 	if err != nil {
-		env.ErrorContext(ctx, "Failed to add tracks to playlist in DB", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Failed to add tracks to playlist in DB", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -1400,7 +1401,7 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 	// TODO: Send notification to the user about the friend request
 	env.Logger.DebugContext(ctx, "Encoding response")
 	if err := json.NewEncoder(w).Encode(friendship); err != nil {
-		env.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -1671,12 +1672,12 @@ func GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
 
 	// something crazy has happened
 	if errors.Is(err, pgx.ErrNoRows) {
-		env.ErrorContext(ctx, "User not found", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "User not found", slog.Any("error", err))
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		env.ErrorContext(ctx, "Failed to retrieve user", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Failed to retrieve user", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -1738,12 +1739,12 @@ func GetUserByUsername(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		env.ErrorContext(ctx, "User not found", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "User not found", slog.Any("error", err))
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		env.ErrorContext(ctx, "Failed to retrieve user", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Failed to retrieve user", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -1794,7 +1795,7 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 	// Validate parameters
 	env.Logger.DebugContext(ctx, "Validating parameters")
 	if err := uuid.Validate(searcherID); err != nil {
-		env.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
 		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
@@ -2064,15 +2065,15 @@ func UpdatePersonalProfile(w http.ResponseWriter, r *http.Request) {
 	res, err := env.Database.UpdateUserProfile(ctx, params)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		env.ErrorContext(ctx, "Username already taken", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Username already taken", slog.Any("error", err))
 		http.Error(w, "Username unavailable", http.StatusConflict)
 		return
 	} else if errors.Is(err, pgx.ErrNoRows) {
-		env.ErrorContext(ctx, "User not found")
+		env.Logger.ErrorContext(ctx, "User not found")
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	} else if err != nil {
-		env.ErrorContext(ctx, "Failed to update user profile", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Failed to update user profile", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -2146,7 +2147,7 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 	// Retrieve recent plays
 	env.Logger.DebugContext(ctx, "Retrieving recent plays from Spotify")
 	recentTracks, err := hathrSpotify.GetRecentlyPlayedTracks(accessToken, request.After, env, ctx)
-	var spotifyErr *spotifyErrors.SpotifyError
+	var spotifyErr *hathrHttp.HTTPError
 	if errors.As(err, &spotifyErr) && spotifyErr.StatusCode == http.StatusUnauthorized {
 		env.Logger.ErrorContext(ctx, "Spotify rate limit exceeded", slog.Any("error", err))
 		http.Error(w, "Spotify rate limit exceeded", http.StatusTooManyRequests)
@@ -2344,4 +2345,85 @@ func ReleasePlaylists(w http.ResponseWriter, r *http.Request) {
 	}
 
 	env.Logger.DebugContext(ctx, "Successfully released playlists")
+}
+
+func CreatePlaylistCover(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request parameters")
+	var body requests.CreatePlaylistImage
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	defer r.Body.Close()
+	hathrJson.DecodeJson(&body, decoder)
+
+	// Validate user ID
+	env.Logger.DebugContext(ctx, "Validating request body")
+	validate := validator.New()
+	if err := validate.Struct(body); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	// Retrieve playlist from DB
+	env.Logger.DebugContext(ctx, "Retrieving playlist from DB")
+	playlist, err := env.Database.GetPlaylistDateAndType(ctx, body.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.Logger.ErrorContext(ctx, "Playlist not found", slog.Any("error", err))
+		http.Error(w, "Playlist not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to retrieve playlist", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	var response covers.CreateImageCoverResponse
+	var httpError *hathrHttp.HTTPError
+	env.Logger.DebugContext(ctx, "Creating playlist image cover", slog.Int("year", int(playlist.Year)), slog.String("month", string(playlist.Month)), slog.Int("day", int(playlist.Day)), slog.String("type", string(playlist.Type)))
+	if playlist.Type == "weekly" {
+		response, err = covers.CreateMonthlyImageCover(covers.CreateMonthlyImageCoverParams{
+			Month: models.Month(int(playlist.Month)),
+			Year:  uint16(playlist.Year),
+		}, env)
+	} else if playlist.Type == "monthly" {
+		date1 := time.Date(int(playlist.Year), time.Month(playlist.Month), int(playlist.Day), 0, 0, 0, 0, time.Local)
+		date2 := date1.AddDate(0, 0, 6)
+		response, err = covers.CreateWeeklyImageCover(covers.CreateWeeklyImageCoverParams{
+			Day1:   uint8(date1.Day()),
+			Day2:   uint8(date2.Day()),
+			Year1:  uint16(date1.Year()),
+			Year2:  uint16(date2.Year()),
+			Month1: models.Month(date1.Month().String()),
+			Month2: models.Month(date2.Month().String()),
+		}, env)
+	}
+
+	if errors.As(err, &httpError) {
+		env.Logger.ErrorContext(ctx, "Failed to create playlist image", slog.Any("error", err))
+		if httpError.StatusCode == http.StatusUnprocessableEntity {
+			http.Error(w, http.StatusText(httpError.StatusCode), httpError.StatusCode)
+		} else {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+	} else if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to create playlist image", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Encode response
+	env.Logger.DebugContext(ctx, "Successfully created playlist image")
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode response", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 }

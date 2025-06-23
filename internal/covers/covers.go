@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"hathr-backend/internal/api/models"
 	"hathr-backend/internal/env"
@@ -15,6 +17,8 @@ import (
 
 	"github.com/hashicorp/go-retryablehttp"
 )
+
+const playlistCoverBucket = "playlist-covers"
 
 type CreateMonthlyImageCoverParams struct {
 	Month models.Month `json:"month"`
@@ -118,4 +122,26 @@ func CreateWeeklyImageCover(params CreateWeeklyImageCoverParams, env *env.Env) (
 	}
 
 	return response, nil
+}
+
+func MonthlyPlaylistCoverURL(month models.Month, year uint16) (string, error) {
+	s3Url := os.Getenv("S3_URL")
+	if s3Url == "" {
+		return "", fmt.Errorf("Please set S3_URL environment variable")
+	}
+	return fmt.Sprintf("https://%s/%s/monthly/%d/%s", s3Url, playlistCoverBucket, year, string(month)), nil
+}
+
+func WeeklyPlaylistCoverURL(month models.Month, year uint16, day uint8) (string, error) {
+	s3Url := os.Getenv("S3_URL")
+	if s3Url == "" {
+		return "", fmt.Errorf("Please set S3_URL environment variable")
+	}
+
+	date1 := time.Date(int(year), time.Month(month.Index()+1), int(day), 0, 0, 0, 0, time.Local)
+	date2 := date1.AddDate(0, 0, 6)
+	month2 := strings.ToLower(date1.Month().String())
+	date1Str := fmt.Sprintf("%s_%d", month, day)
+	date2Str := fmt.Sprintf("%s_%d", month2, date2.Day())
+	return fmt.Sprintf("https://%s/%s/weekly/%d/%s/%s-%s", s3Url, playlistCoverBucket, date2.Year(), month2, date1Str, date2Str), nil
 }

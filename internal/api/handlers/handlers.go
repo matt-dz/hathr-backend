@@ -790,22 +790,37 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 
 	// Create playlist
 	var playlistID uuid.UUID
+	var imageUrl string
 	if request.Type == "weekly" {
 		env.Logger.DebugContext(ctx, "Creating weekly playlist in DB")
+		imageUrl, err = covers.WeeklyPlaylistCoverURL(request.Month, request.Year, request.Day)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to generate playlist cover url", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 		playlistID, err = env.Database.CreateWeeklySpotifyPlaylist(ctx, database.CreateWeeklySpotifyPlaylistParams{
-			UserID: uuid.MustParse(userID),
-			Name:   formatWeeklyPlaylistName(request.Year, uint8(month), request.Day),
-			Year:   int32(request.Year),
-			Month:  int32(month),
-			Day:    int32(request.Day),
+			UserID:   uuid.MustParse(userID),
+			Name:     formatWeeklyPlaylistName(request.Year, uint8(month), request.Day),
+			Year:     int32(request.Year),
+			Month:    int32(month),
+			Day:      int32(request.Day),
+			ImageUrl: imageUrl,
 		})
 	} else if request.Type == "monthly" {
 		env.Logger.DebugContext(ctx, "Creating monthly playlist in DB")
+		imageUrl, err = covers.MonthlyPlaylistCoverURL(request.Month, request.Year)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to generate playlist cover url", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 		playlistID, err = env.Database.CreateMonthlySpotifyPlaylist(ctx, database.CreateMonthlySpotifyPlaylistParams{
-			UserID: uuid.MustParse(userID),
-			Name:   formatMonthlyPlaylistName(request.Month, request.Year),
-			Year:   int32(request.Year),
-			Month:  int32(month),
+			UserID:   uuid.MustParse(userID),
+			Name:     formatMonthlyPlaylistName(request.Month, request.Year),
+			Year:     int32(request.Year),
+			Month:    int32(month),
+			ImageUrl: imageUrl,
 		})
 	}
 	if err != nil {
@@ -880,6 +895,7 @@ func GetPersonalPlaylists(w http.ResponseWriter, r *http.Request) {
 			UserID:     dbPlaylist.UserID,
 			Name:       dbPlaylist.Name,
 			Type:       string(dbPlaylist.Type),
+			ImageURL:   dbPlaylist.ImageUrl,
 		}
 
 		month, err := models.GetMonth(int(dbPlaylist.Month))
@@ -979,6 +995,7 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 		UserID:     dbPlaylist.Playlist.UserID,
 		Name:       dbPlaylist.Playlist.Name,
 		Type:       string(dbPlaylist.Playlist.Type),
+		ImageURL:   dbPlaylist.Playlist.ImageUrl,
 	}
 
 	month, err := models.GetMonth(int(dbPlaylist.Playlist.Month))
@@ -1830,6 +1847,7 @@ func GetUserPlaylists(w http.ResponseWriter, r *http.Request) {
 			UserID:     dbPlaylist.UserID,
 			Name:       dbPlaylist.Name,
 			Type:       string(dbPlaylist.Type),
+			ImageURL:   dbPlaylist.ImageUrl,
 		}
 		month, err := models.GetMonth(int(dbPlaylist.Month))
 		if err != nil {
@@ -1961,6 +1979,7 @@ func GetFriendsPlaylists(w http.ResponseWriter, r *http.Request) {
 				UserID:     row.User.ID,
 				Name:       row.PlaylistName,
 				Type:       string(row.PlaylistType),
+				ImageURL:   row.PlaylistImageUrl,
 			},
 		}
 
@@ -2371,29 +2390,17 @@ func CreatePlaylistCover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Retrieve playlist from DB
-	env.Logger.DebugContext(ctx, "Retrieving playlist from DB")
-	playlist, err := env.Database.GetPlaylistDateAndType(ctx, body.ID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		env.Logger.ErrorContext(ctx, "Playlist not found", slog.Any("error", err))
-		http.Error(w, "Playlist not found", http.StatusNotFound)
-		return
-	} else if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to retrieve playlist", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
 	var response covers.CreateImageCoverResponse
+	var err error
 	var httpError *hathrHttp.HTTPError
-	env.Logger.DebugContext(ctx, "Creating playlist image cover", slog.Int("year", int(playlist.Year)), slog.String("month", string(playlist.Month)), slog.Int("day", int(playlist.Day)), slog.String("type", string(playlist.Type)))
-	if playlist.Type == "weekly" {
+	env.Logger.DebugContext(ctx, "Creating playlist image cover", slog.Int("year", int(body.Year)), slog.String("month", string(body.Month)), slog.Int("day", int(body.Day)), slog.String("type", string(body.Type)))
+	if body.Type == "weekly" {
 		response, err = covers.CreateMonthlyImageCover(covers.CreateMonthlyImageCoverParams{
-			Month: models.Month(int(playlist.Month)),
-			Year:  uint16(playlist.Year),
+			Month: models.Month(body.Month),
+			Year:  uint16(body.Year),
 		}, env)
-	} else if playlist.Type == "monthly" {
-		date1 := time.Date(int(playlist.Year), time.Month(playlist.Month), int(playlist.Day), 0, 0, 0, 0, time.Local)
+	} else if body.Type == "monthly" {
+		date1 := time.Date(int(body.Year), time.Month(body.Month.Index()+1), int(body.Day), 0, 0, 0, 0, time.Local)
 		date2 := date1.AddDate(0, 0, 6)
 		response, err = covers.CreateWeeklyImageCover(covers.CreateWeeklyImageCoverParams{
 			Day1:   uint8(date1.Day()),

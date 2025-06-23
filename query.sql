@@ -38,7 +38,7 @@ LIMIT 10;
 SELECT
     p.id, p.type, p.name, p.user_id,
     p.created_at, p.visibility, p.year,
-    p.month, p.day,
+    p.month, p.day, p.image_url,
     COUNT(st) AS num_tracks
 FROM playlists p
 JOIN spotify_playlist_tracks ppt
@@ -49,13 +49,13 @@ WHERE p.user_id = $1 AND p.visibility <> 'unreleased'
 GROUP BY
     p.id, p.type, p.name, p.user_id,
     p.created_at, p.visibility, p.year,
-    p.month, p.day;
+    p.month, p.day, p.image_url;
 
 -- name: GetUserPlaylists :many
 SELECT
     p.id, p.user_id, ARRAY_LENGTH(p.tracks, 1) AS num_tracks,
     p.type, p.name, p.created_at, p.visibility,
-    p.year, p.month, p.day
+    p.year, p.month, p.day, p.image_url
 FROM playlists p
 JOIN users u
     ON u.id = p.user_id
@@ -268,6 +268,7 @@ SELECT
     p.day AS playlist_day,
     p.created_at AS playlist_created_at,
     p.visibility AS playlist_visibility,
+    p.image_url AS playlist_image_url,
     p.num_tracks
 FROM friends fr
 JOIN users u
@@ -276,6 +277,7 @@ LEFT JOIN LATERAL (
     SELECT
         id, type, name, year, day,
         month, created_at, visibility,
+        image_url,
         COUNT(*) as num_tracks
     FROM playlists
     JOIN spotify_playlist_tracks ppt ON ppt.playlist_id = playlists.id
@@ -352,15 +354,15 @@ WHERE u.id = $1
 FOR UPDATE OF t;
 
 -- name: CreateMonthlySpotifyPlaylist :one
-INSERT INTO playlists (user_id, name, type, visibility, year, month, day)
-VALUES ($1, $2, 'monthly', 'unreleased', $3, $4, 1)
+INSERT INTO playlists (user_id, name, type, visibility, year, month, day, image_url)
+VALUES ($1, $2, 'monthly', 'unreleased', $3, $4, 1, $5)
 ON CONFLICT (user_id, type, year, month) DO UPDATE
     SET month = playlists.month -- no-op
 RETURNING id as playlist_id;
 
 -- name: CreateWeeklySpotifyPlaylist :one
-INSERT INTO playlists (user_id, name, type, visibility, year, month, day)
-VALUES ($1, $2, 'weekly', 'unreleased', $3, $4, $5)
+INSERT INTO playlists (user_id, name, type, visibility, year, month, day, image_url)
+VALUES ($1, $2, 'weekly', 'unreleased', $3, $4, $5, $6)
 ON CONFLICT (user_id, type, year, day) DO UPDATE
     SET day = playlists.day -- no-op
 RETURNING id as playlist_id;

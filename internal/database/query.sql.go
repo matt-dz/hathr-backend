@@ -118,18 +118,19 @@ func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendReque
 }
 
 const createMonthlySpotifyPlaylist = `-- name: CreateMonthlySpotifyPlaylist :one
-INSERT INTO playlists (user_id, name, type, visibility, year, month, day)
-VALUES ($1, $2, 'monthly', 'unreleased', $3, $4, 1)
+INSERT INTO playlists (user_id, name, type, visibility, year, month, day, image_url)
+VALUES ($1, $2, 'monthly', 'unreleased', $3, $4, 1, $5)
 ON CONFLICT (user_id, type, year, month) DO UPDATE
     SET month = playlists.month -- no-op
 RETURNING id as playlist_id
 `
 
 type CreateMonthlySpotifyPlaylistParams struct {
-	UserID uuid.UUID `json:"user_id"`
-	Name   string    `json:"name"`
-	Year   int32     `json:"year"`
-	Month  int32     `json:"month"`
+	UserID   uuid.UUID `json:"user_id"`
+	Name     string    `json:"name"`
+	Year     int32     `json:"year"`
+	Month    int32     `json:"month"`
+	ImageUrl string    `json:"image_url"`
 }
 
 func (q *Queries) CreateMonthlySpotifyPlaylist(ctx context.Context, arg CreateMonthlySpotifyPlaylistParams) (uuid.UUID, error) {
@@ -138,6 +139,7 @@ func (q *Queries) CreateMonthlySpotifyPlaylist(ctx context.Context, arg CreateMo
 		arg.Name,
 		arg.Year,
 		arg.Month,
+		arg.ImageUrl,
 	)
 	var playlist_id uuid.UUID
 	err := row.Scan(&playlist_id)
@@ -242,19 +244,20 @@ func (q *Queries) CreateSpotifyUser(ctx context.Context, arg CreateSpotifyUserPa
 }
 
 const createWeeklySpotifyPlaylist = `-- name: CreateWeeklySpotifyPlaylist :one
-INSERT INTO playlists (user_id, name, type, visibility, year, month, day)
-VALUES ($1, $2, 'weekly', 'unreleased', $3, $4, $5)
+INSERT INTO playlists (user_id, name, type, visibility, year, month, day, image_url)
+VALUES ($1, $2, 'weekly', 'unreleased', $3, $4, $5, $6)
 ON CONFLICT (user_id, type, year, day) DO UPDATE
     SET day = playlists.day -- no-op
 RETURNING id as playlist_id
 `
 
 type CreateWeeklySpotifyPlaylistParams struct {
-	UserID uuid.UUID `json:"user_id"`
-	Name   string    `json:"name"`
-	Year   int32     `json:"year"`
-	Month  int32     `json:"month"`
-	Day    int32     `json:"day"`
+	UserID   uuid.UUID `json:"user_id"`
+	Name     string    `json:"name"`
+	Year     int32     `json:"year"`
+	Month    int32     `json:"month"`
+	Day      int32     `json:"day"`
+	ImageUrl string    `json:"image_url"`
 }
 
 func (q *Queries) CreateWeeklySpotifyPlaylist(ctx context.Context, arg CreateWeeklySpotifyPlaylistParams) (uuid.UUID, error) {
@@ -264,6 +267,7 @@ func (q *Queries) CreateWeeklySpotifyPlaylist(ctx context.Context, arg CreateWee
 		arg.Year,
 		arg.Month,
 		arg.Day,
+		arg.ImageUrl,
 	)
 	var playlist_id uuid.UUID
 	err := row.Scan(&playlist_id)
@@ -340,6 +344,7 @@ SELECT
     p.day AS playlist_day,
     p.created_at AS playlist_created_at,
     p.visibility AS playlist_visibility,
+    p.image_url AS playlist_image_url,
     p.num_tracks
 FROM friends fr
 JOIN users u
@@ -348,6 +353,7 @@ LEFT JOIN LATERAL (
     SELECT
         id, type, name, year, day,
         month, created_at, visibility,
+        image_url,
         COUNT(*) as num_tracks
     FROM playlists
     JOIN spotify_playlist_tracks ppt ON ppt.playlist_id = playlists.id
@@ -372,6 +378,7 @@ type GetFriendPlaylistsRow struct {
 	PlaylistDay        int32              `json:"playlist_day"`
 	PlaylistCreatedAt  pgtype.Timestamptz `json:"playlist_created_at"`
 	PlaylistVisibility PlaylistVisibility `json:"playlist_visibility"`
+	PlaylistImageUrl   string             `json:"playlist_image_url"`
 	NumTracks          int64              `json:"num_tracks"`
 }
 
@@ -406,6 +413,7 @@ func (q *Queries) GetFriendPlaylists(ctx context.Context, userAID uuid.UUID) ([]
 			&i.PlaylistDay,
 			&i.PlaylistCreatedAt,
 			&i.PlaylistVisibility,
+			&i.PlaylistImageUrl,
 			&i.NumTracks,
 		); err != nil {
 			return nil, err
@@ -435,7 +443,7 @@ const getPersonalPlaylists = `-- name: GetPersonalPlaylists :many
 SELECT
     p.id, p.type, p.name, p.user_id,
     p.created_at, p.visibility, p.year,
-    p.month, p.day,
+    p.month, p.day, p.image_url,
     COUNT(st) AS num_tracks
 FROM playlists p
 JOIN spotify_playlist_tracks ppt
@@ -446,7 +454,7 @@ WHERE p.user_id = $1 AND p.visibility <> 'unreleased'
 GROUP BY
     p.id, p.type, p.name, p.user_id,
     p.created_at, p.visibility, p.year,
-    p.month, p.day
+    p.month, p.day, p.image_url
 `
 
 type GetPersonalPlaylistsRow struct {
@@ -459,6 +467,7 @@ type GetPersonalPlaylistsRow struct {
 	Year       int32              `json:"year"`
 	Month      int32              `json:"month"`
 	Day        int32              `json:"day"`
+	ImageUrl   string             `json:"image_url"`
 	NumTracks  int64              `json:"num_tracks"`
 }
 
@@ -481,6 +490,7 @@ func (q *Queries) GetPersonalPlaylists(ctx context.Context, userID uuid.UUID) ([
 			&i.Year,
 			&i.Month,
 			&i.Day,
+			&i.ImageUrl,
 			&i.NumTracks,
 		); err != nil {
 			return nil, err
@@ -529,7 +539,7 @@ type GetPlaylistDateAndTypeRow struct {
 	Month    int32        `json:"month"`
 	Day      int32        `json:"day"`
 	Type     PlaylistType `json:"type"`
-	ImageUrl pgtype.Text  `json:"image_url"`
+	ImageUrl string       `json:"image_url"`
 }
 
 func (q *Queries) GetPlaylistDateAndType(ctx context.Context, id uuid.UUID) (GetPlaylistDateAndTypeRow, error) {
@@ -817,7 +827,7 @@ const getUserPlaylists = `-- name: GetUserPlaylists :many
 SELECT
     p.id, p.user_id, ARRAY_LENGTH(p.tracks, 1) AS num_tracks,
     p.type, p.name, p.created_at, p.visibility,
-    p.year, p.month, p.day
+    p.year, p.month, p.day, p.image_url
 FROM playlists p
 JOIN users u
     ON u.id = p.user_id
@@ -846,6 +856,7 @@ type GetUserPlaylistsRow struct {
 	Year       int32              `json:"year"`
 	Month      int32              `json:"month"`
 	Day        int32              `json:"day"`
+	ImageUrl   string             `json:"image_url"`
 }
 
 func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsParams) ([]GetUserPlaylistsRow, error) {
@@ -868,6 +879,7 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsPara
 			&i.Year,
 			&i.Month,
 			&i.Day,
+			&i.ImageUrl,
 		); err != nil {
 			return nil, err
 		}

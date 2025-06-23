@@ -67,6 +67,7 @@ type SpotifyPlaylist struct {
 	UserID     uuid.UUID                   `json:"user_id"`
 	Name       string                      `json:"name"`
 	Type       string                      `json:"type"`
+	ImageURL   string                      `json:"image_url"`
 }
 
 type PlaylistWithoutTracks struct {
@@ -80,6 +81,7 @@ type PlaylistWithoutTracks struct {
 	UserID     uuid.UUID                   `json:"user_id"`
 	Name       string                      `json:"name"`
 	Type       string                      `json:"type"`
+	ImageURL   string                      `json:"image_url"`
 }
 
 type PublicUser struct {

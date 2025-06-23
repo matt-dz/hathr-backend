@@ -89,7 +89,7 @@ CREATE TABLE playlists (
     name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now (),
     visibility playlist_visibility NOT NULL DEFAULT 'unreleased',
-    image_url TEXT,
+    image_url TEXT NOT NULL,
 
     year INTEGER NOT NULL,
     month INTEGER NOT NULL,

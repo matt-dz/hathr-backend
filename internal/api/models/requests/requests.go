@@ -72,5 +72,9 @@ type ReleasePlaylists struct {
 }
 
 type CreatePlaylistImage struct {
-	ID uuid.UUID `json:"id" validate:"required"`
+	Day   uint8        `json:"day" validate:"required_if=Type weekly,excluded_unless=Type weekly"`
+	Year  uint16       `json:"year" validate:"required"`
+	Month models.Month `json:"month" validate:"required"`
+
+	Type string `json:"type" validate:"required,oneof=weekly monthly"`
 }

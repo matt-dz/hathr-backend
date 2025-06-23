@@ -772,13 +772,13 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 		}
 		endDate = startDate.AddDate(0, 1, -1)
 	} else if request.Type == "weekly" {
-		startDate, err := loadDate(int(request.Year), month, int(request.Day), 0, 0, 0, 0)
+		startDate, err := loadDate(int(request.Year), month, int(request.Day), int(request.Hour), 0, 0, 0)
 		if err != nil {
 			env.Logger.ErrorContext(ctx, "Failed to create start date", slog.Any("error", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		endDate = startDate.AddDate(0, 0, 6)
+		endDate = startDate.AddDate(0, 0, 7)
 	}
 	env.Logger.DebugContext(ctx, "Getting top songs from DB")
 	tracks, err := env.Database.GetTopSpotifyTracks(ctx, database.GetTopSpotifyTracksParams{
@@ -2424,7 +2424,7 @@ func CreatePlaylistCover(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		date2 := date1.AddDate(0, 0, 6)
+		date2 := date1.AddDate(0, 0, 7)
 		response, err = covers.CreateWeeklyImageCover(covers.CreateWeeklyImageCoverParams{
 			Day1:   uint8(date1.Day()),
 			Day2:   uint8(date2.Day()),

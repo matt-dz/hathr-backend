@@ -236,6 +236,14 @@ func retrieveSpotifyToken(id uuid.UUID, env *hathrEnv.Env, ctx context.Context) 
 	return res.AccessToken, nil
 }
 
+func loadDate(year int, month time.Month, day, hour, min, sec, nsec int) (time.Time, error) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Date(year, month, day, hour, min, sec, nsec, loc), nil
+}
+
 func ServeSpotifyOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
@@ -756,10 +764,20 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 	var endDate time.Time
 	month := time.Month(request.Month.Index() + 1)
 	if request.Type == "monthly" {
-		startDate = time.Date(int(request.Year), month, 1, 0, 0, 0, 0, time.Local)
+		startDate, err := loadDate(int(request.Year), month, 1, 0, 0, 0, 0)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to create start date", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 		endDate = startDate.AddDate(0, 1, -1)
 	} else if request.Type == "weekly" {
-		startDate = time.Date(int(request.Year), month, int(request.Day), 0, 0, 0, 0, time.Local)
+		startDate, err := loadDate(int(request.Year), month, int(request.Day), 0, 0, 0, 0)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to create start date", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 		endDate = startDate.AddDate(0, 0, 6)
 	}
 	env.Logger.DebugContext(ctx, "Getting top songs from DB")
@@ -2400,7 +2418,12 @@ func CreatePlaylistCover(w http.ResponseWriter, r *http.Request) {
 			Year:  uint16(body.Year),
 		}, env)
 	} else if body.Type == "monthly" {
-		date1 := time.Date(int(body.Year), time.Month(body.Month.Index()+1), int(body.Day), 0, 0, 0, 0, time.Local)
+		date1, err := loadDate(int(body.Year), time.Month(body.Month.Index()+1), int(body.Day), 0, 0, 0, 0)
+		if err != nil {
+			env.Logger.ErrorContext(ctx, "Failed to load date", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 		date2 := date1.AddDate(0, 0, 6)
 		response, err = covers.CreateWeeklyImageCover(covers.CreateWeeklyImageCoverParams{
 			Day1:   uint8(date1.Day()),

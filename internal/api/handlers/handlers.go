@@ -2343,7 +2343,7 @@ func ReleasePlaylists(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	if body.Day < 1 || body.Day > 31 {
+	if body.Type == "weekly" && body.Day < 1 || body.Day > 31 {
 		env.Logger.ErrorContext(ctx, "Invalid day", slog.Int("day", int(body.Day)))
 		http.Error(w, "Invalid day", http.StatusBadRequest)
 		return

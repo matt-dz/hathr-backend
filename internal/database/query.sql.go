@@ -246,7 +246,7 @@ func (q *Queries) CreateSpotifyUser(ctx context.Context, arg CreateSpotifyUserPa
 const createWeeklySpotifyPlaylist = `-- name: CreateWeeklySpotifyPlaylist :one
 INSERT INTO playlists (user_id, name, type, visibility, year, month, day, image_url)
 VALUES ($1, $2, 'weekly', 'unreleased', $3, $4, $5, $6)
-ON CONFLICT (user_id, type, year, day) DO UPDATE
+ON CONFLICT (user_id, type, year, month, day) DO UPDATE
     SET day = playlists.day -- no-op
 RETURNING id as playlist_id
 `

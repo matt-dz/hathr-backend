@@ -111,11 +111,12 @@ func ListUsers(bearerToken string, next uuid.UUID, limit uint, env *env.Env) (re
 
 func CreateMonthlyPlaylist(currentTime time.Time, userID uuid.UUID, bearerToken string, env *env.Env) error {
 	ctx := logging.AppendCtx(context.Background(), slog.String("user_id", userID.String()))
+	previousMonth := currentTime.AddDate(0, -1, 0)
 
 	// Create request
 	requestBody := requests.CreatePlaylist{
-		Month:    models.Month(strings.ToLower(currentTime.Month().String())),
-		Year:     uint16(currentTime.Year()),
+		Month:    models.Month(strings.ToLower(previousMonth.Month().String())),
+		Year:     uint16(previousMonth.Year()),
 		Provider: "spotify",
 		Type:     "monthly",
 	}
@@ -155,6 +156,7 @@ func CreateWeeklyPlaylist(weekEnd time.Time, userID uuid.UUID, bearerToken strin
 	// Create request
 	env.Logger.DebugContext(ctx, "Creating request")
 	requestBody := requests.CreatePlaylist{
+		Hour:     uint8(weekStart.Hour()),
 		Day:      uint8(weekStart.Day()),
 		Year:     uint16(weekStart.Year()),
 		Month:    models.Month(strings.ToLower(weekStart.Month().String())),
@@ -204,7 +206,7 @@ func ReleaseWeeklyPlaylist(weekEnd time.Time, bearerToken string, env *env.Env) 
 	if err != nil {
 		return err
 	}
-	req, err := retryablehttp.NewRequest(http.MethodPost, fmt.Sprintf("%s/api/release-playlists", backendUrl), bytes.NewReader(rawBody))
+	req, err := retryablehttp.NewRequest(http.MethodPatch, fmt.Sprintf("%s/api/release-playlists", backendUrl), bytes.NewReader(rawBody))
 	if err != nil {
 		return err
 	}
@@ -240,7 +242,7 @@ func ReleaseMonthlyPlaylist(currentTime time.Time, bearerToken string, env *env.
 	if err != nil {
 		return err
 	}
-	req, err := retryablehttp.NewRequest(http.MethodPost, fmt.Sprintf("%s/api/release-playlists", backendUrl), bytes.NewReader(rawBody))
+	req, err := retryablehttp.NewRequest(http.MethodPatch, fmt.Sprintf("%s/api/release-playlists", backendUrl), bytes.NewReader(rawBody))
 	if err != nil {
 		return err
 	}

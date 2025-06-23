@@ -60,6 +60,7 @@ func Run(cmd *cobra.Command, _ []string, env *env.Env) {
 			}()
 		}
 		wg.Wait()
+		next = users.Next
 		env.Logger.Info("All users in batch processed", slog.String("next", users.Next.String()))
 	}
 

@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
 )
 
 type ctxKey string
@@ -54,6 +55,16 @@ type nullWriter struct {
 
 func (nullWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
+}
+
+func New() *slog.Logger {
+	return slog.New(&ContextHandler{
+		Handler: slog.NewTextHandler(
+			os.Stderr,
+			&slog.HandlerOptions{
+				Level: slog.LevelDebug,
+			})},
+	)
 }
 
 func NullLogger() *ContextHandler {

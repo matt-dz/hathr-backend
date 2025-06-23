@@ -15,8 +15,8 @@ type UpsertUser struct {
 }
 
 type CreatePlaylist struct {
-	Day   uint8        `json:"day" validate:"required_if=Type weekly,excluded_unless=Type weekly"`
-	Hour  uint8        `json:"hour" validate:"required_if=Type weekly,excluded_unless=Type weekly,gte=0,lte=23"`
+	Day   uint8        `json:"day,omitempty" validate:"required_if=Type weekly,excluded_unless=Type weekly"`
+	Hour  uint8        `json:"hour,omitempty" validate:"required_if=Type weekly,excluded_unless=Type weekly,gte=0,lte=23"`
 	Year  uint16       `json:"year" validate:"required,gte=2025,lte=9999"`
 	Month models.Month `json:"month" validate:"required"`
 
@@ -64,7 +64,7 @@ type UpdateSpotifyPlays struct {
 }
 
 type ReleasePlaylists struct {
-	Day   uint8        `json:"day" validate:"required_if=Type weekly,excluded_unless=Type weekly"`
+	Day   uint8        `json:"day,omitempty" validate:"required_if=Type weekly,excluded_unless=Type weekly"`
 	Year  uint16       `json:"year" validate:"required"`
 	Month models.Month `json:"month" validate:"required"`
 

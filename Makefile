@@ -1,6 +1,8 @@
 .PHONY: all run build fmt clean help
 
-BINARY:=hathr
+SERVER_DIR:=cmd/server
+SERVER_BIN:=hathr-server
+CLI_BIN:=hathr-cli
 BINDIR:=bin
 DOCKER_TAG:=hathr-backend
 DOCKER_PORT:=8080
@@ -12,23 +14,28 @@ endif
 
 all: build
 
-build:
-	@echo "🔨  Building $(BINARY)…"
-	go build -o $(BINDIR)/$(BINARY) cmd/hathr/main.go
-	@echo "✓  Built $(BINDIR)/$(BINARY)"
+build-server:
+	@echo "🔨  Building $(SERVER_BIN)…"
+	go build -o $(BINDIR)/$(SERVER_BIN) $(SERVER_DIR)/main.go
+	@echo "✓  Built $(BINDIR)/$(SERVER_BIN)"
+
+build-cli:
+	@echo "🔨  Building $(CLI_BIN)…"
+	go build -o $(BINDIR)/$(CLI_BIN) cmd/cli/main.go
+	@echo "✓  Built $(BINDIR)/$(CLI_BIN)"
 
 docker-build:
-	@echo "🔨🐳 Building docker image $(BINARY)…"
+	@echo "🔨🐳 Building docker image $(SERVER_BIN)…"
 	docker build . -t $(DOCKER_TAG)
 	@echo "✓  Built $(DOCKER_TAG)"
 
-run:
+run-server:
 	@echo "🚀  Starting..."
-	go run cmd/hathr/main.go
+	go run $(SERVER_DIR)/main.go
 
 docker-run:
-	@echo "🚀🐳  Starting docker image $(BINARY)..."
-	docker run --env-file .env -e JWKS_PATH=/app/jwks.json --mount type=bind,src=jwks.json,dst=/app/jwks.json,ro -p $(DOCKER_PORT):8080 $(BINARY)
+	@echo "🚀🐳  Starting docker image $(SERVER_BIN)..."
+	docker run --env-file .env -e JWKS_PATH=/app/jwks.json --mount type=bind,src=jwks.json,dst=/app/jwks.json,ro -p $(DOCKER_PORT):8080 $(SERVER_BIN)
 
 create-admin:
 	@echo "👤  Creating admin user..."

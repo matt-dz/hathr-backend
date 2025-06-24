@@ -323,109 +323,6 @@ func (q *Queries) GetAdminUser(ctx context.Context, username pgtype.Text) (GetAd
 	return i, err
 }
 
-const getFriendPlaylists = `-- name: GetFriendPlaylists :many
-WITH friends AS (
-    SELECT
-        CASE
-            WHEN f.user_a_id = $1 THEN f.user_b_id
-            ELSE f.user_a_id
-        END AS friend_id
-    FROM friendships f
-    WHERE f.status    = 'accepted'
-    AND (f.user_a_id = $1 OR f.user_b_id = $1)
-)
-SELECT
-    u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
-    p.id AS playlist_id,
-    p.type AS playlist_type,
-    p.name AS playlist_name,
-    p.year AS playlist_year,
-    p.month AS playlist_month,
-    p.day AS playlist_day,
-    p.created_at AS playlist_created_at,
-    p.visibility AS playlist_visibility,
-    p.image_url AS playlist_image_url,
-    p.num_tracks
-FROM friends fr
-JOIN users u
-    ON u.id = fr.friend_id
-LEFT JOIN LATERAL (
-    SELECT
-        id, type, name, year, day,
-        month, created_at, visibility,
-        image_url,
-        COUNT(*) as num_tracks
-    FROM playlists
-    JOIN spotify_playlist_tracks ppt ON ppt.playlist_id = playlists.id
-    WHERE user_id = fr.friend_id AND visibility = 'public'
-    GROUP BY
-        id, type, name, year, month,
-        day, created_at,
-        visibility
-    ORDER BY created_at DESC
-    LIMIT 1
-) p ON true
-ORDER BY u.username
-`
-
-type GetFriendPlaylistsRow struct {
-	User               User               `json:"user"`
-	PlaylistID         uuid.UUID          `json:"playlist_id"`
-	PlaylistType       PlaylistType       `json:"playlist_type"`
-	PlaylistName       string             `json:"playlist_name"`
-	PlaylistYear       int32              `json:"playlist_year"`
-	PlaylistMonth      int32              `json:"playlist_month"`
-	PlaylistDay        int32              `json:"playlist_day"`
-	PlaylistCreatedAt  pgtype.Timestamptz `json:"playlist_created_at"`
-	PlaylistVisibility PlaylistVisibility `json:"playlist_visibility"`
-	PlaylistImageUrl   string             `json:"playlist_image_url"`
-	NumTracks          int64              `json:"num_tracks"`
-}
-
-func (q *Queries) GetFriendPlaylists(ctx context.Context, userAID uuid.UUID) ([]GetFriendPlaylistsRow, error) {
-	rows, err := q.db.Query(ctx, getFriendPlaylists, userAID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetFriendPlaylistsRow
-	for rows.Next() {
-		var i GetFriendPlaylistsRow
-		if err := rows.Scan(
-			&i.User.ID,
-			&i.User.DisplayName,
-			&i.User.Username,
-			&i.User.ImageUrl,
-			&i.User.Email,
-			&i.User.RegisteredAt,
-			&i.User.Role,
-			&i.User.Password,
-			&i.User.SpotifyUserID,
-			&i.User.SpotifyUserData,
-			&i.User.CreatedAt,
-			&i.User.RefreshToken,
-			&i.User.RefreshExpiresAt,
-			&i.PlaylistID,
-			&i.PlaylistType,
-			&i.PlaylistName,
-			&i.PlaylistYear,
-			&i.PlaylistMonth,
-			&i.PlaylistDay,
-			&i.PlaylistCreatedAt,
-			&i.PlaylistVisibility,
-			&i.PlaylistImageUrl,
-			&i.NumTracks,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getLatestPrivateKey = `-- name: GetLatestPrivateKey :one
 SELECT kid, value FROM private_keys
 ORDER BY kid DESC
@@ -444,12 +341,10 @@ SELECT
     p.id, p.type, p.name, p.user_id,
     p.created_at, p.visibility, p.year,
     p.month, p.day, p.image_url,
-    COUNT(st) AS num_tracks
+    COUNT(ppt) AS num_tracks
 FROM playlists p
 JOIN spotify_playlist_tracks ppt
     ON ppt.playlist_id = p.id
-JOIN spotify_tracks st
-    ON st.id = ppt.track_id
 WHERE p.user_id = $1 AND p.visibility <> 'unreleased'
 GROUP BY
     p.id, p.type, p.name, p.user_id,
@@ -825,10 +720,12 @@ func (q *Queries) GetUserFromSession(ctx context.Context, refreshToken uuid.UUID
 
 const getUserPlaylists = `-- name: GetUserPlaylists :many
 SELECT
-    p.id, p.user_id, ARRAY_LENGTH(p.tracks, 1) AS num_tracks,
+    p.id, p.user_id, COUNT(ppt) AS num_tracks,
     p.type, p.name, p.created_at, p.visibility,
     p.year, p.month, p.day, p.image_url
 FROM playlists p
+JOIN spotify_playlist_tracks ppt
+    ON ppt.playlist_id = p.id
 JOIN users u
     ON u.id = p.user_id
 LEFT JOIN friendships f
@@ -838,6 +735,10 @@ WHERE
     (f.status IS NULL OR f.status <> 'blocked') AND
     (p.visibility = 'public' OR
     (p.visibility = 'private' AND p.user_id = $1::uuid))
+GROUP BY
+    p.id, p.user_id,  p.type, p.name,
+    p.created_at, p.visibility, p.year,
+    p.month, p.day, p.image_url
 `
 
 type GetUserPlaylistsParams struct {
@@ -848,7 +749,7 @@ type GetUserPlaylistsParams struct {
 type GetUserPlaylistsRow struct {
 	ID         uuid.UUID          `json:"id"`
 	UserID     uuid.UUID          `json:"user_id"`
-	NumTracks  int32              `json:"num_tracks"`
+	NumTracks  int64              `json:"num_tracks"`
 	Type       PlaylistType       `json:"type"`
 	Name       string             `json:"name"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`

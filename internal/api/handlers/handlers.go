@@ -39,6 +39,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const usernameLength = 20
+const displayNameLength = 50
+
 var usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_.]{1,20}$`)
 var displayNameRegex = regexp.MustCompile(`^.{1,50}$`)
 
@@ -242,6 +245,28 @@ func loadDate(year int, month time.Month, day, hour, min, sec, nsec int) (time.T
 		return time.Time{}, err
 	}
 	return time.Date(year, month, day, hour, min, sec, nsec, loc), nil
+}
+
+func validateUsername(username string) error {
+	if len(username) == 0 || len(username) > usernameLength {
+		return fmt.Errorf("Username must be between 1 and 20 characters.")
+	}
+
+	if match := usernameRegex.MatchString(username); !match {
+		return fmt.Errorf("Username may only include alphanumeric characters, underscores, and periods.")
+	}
+	return nil
+}
+
+func validateDisplayName(displayName string) error {
+	if len(displayName) == 0 || len(displayName) > displayNameLength {
+		return fmt.Errorf("Display name must be between 1 and 50 characters.")
+	}
+
+	if !displayNameRegex.MatchString(displayName) {
+		return fmt.Errorf("Display name may not include newlines.")
+	}
+	return nil
 }
 
 func ServeSpotifyOAuthMetadata(w http.ResponseWriter, r *http.Request) {
@@ -552,9 +577,9 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	if match := usernameRegex.MatchString(signupRequest.Username); !match {
+	if err := validateUsername(signupRequest.Username); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid username", slog.String("username", signupRequest.Username))
-		http.Error(w, "Invalid username", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -986,7 +1011,7 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user is authorized to view the playlist
-	if (dbPlaylist.Playlist.ID != uuid.MustParse(userID) &&
+	if (dbPlaylist.User.ID != uuid.MustParse(userID) &&
 		dbPlaylist.Playlist.Visibility != database.PlaylistVisibilityPublic) || dbPlaylist.Playlist.Visibility == database.PlaylistVisibilityUnreleased {
 		env.Logger.ErrorContext(ctx, "User not authorized to view playlist")
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
@@ -1977,31 +2002,37 @@ func GetFriendsPlaylists(w http.ResponseWriter, r *http.Request) {
 
 	// Build response
 	env.Logger.DebugContext(ctx, "Building response")
-	response := make([]models.UserAndPlaylistWithoutTracks, len(rows))
+	response := make([]models.UserAndPlaylistWithoutTracks, 0)
 	for i, row := range rows {
+
+		// If any of the playlist fields are null, there is no playlist associated with this user, skip
+		if row.Playlist.Day == nil {
+			continue
+		}
+
 		user, err := buildPublicUser(row.User)
 		if err != nil {
 			env.Logger.ErrorContext(ctx, "Unable to build user", slog.Any("error", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		response[i] = models.UserAndPlaylistWithoutTracks{
+		response = append(response, models.UserAndPlaylistWithoutTracks{
 			User: user,
 			Playlist: models.PlaylistWithoutTracks{
-				Day:        uint8(row.PlaylistDay),
-				Year:       uint16(row.PlaylistYear),
-				NumTracks:  uint16(row.NumTracks),
-				Visibility: row.PlaylistVisibility,
-				CreatedAt:  row.PlaylistCreatedAt.Time,
-				ID:         row.PlaylistID,
+				Day:        *row.Playlist.Day,
+				Year:       *row.Playlist.Year,
+				NumTracks:  *row.Playlist.NumTracks,
+				Visibility: *row.Playlist.Visibility,
+				CreatedAt:  *row.Playlist.CreatedAt,
+				ID:         *row.Playlist.ID,
 				UserID:     row.User.ID,
-				Name:       row.PlaylistName,
-				Type:       string(row.PlaylistType),
-				ImageURL:   row.PlaylistImageUrl,
+				Name:       *row.Playlist.Name,
+				Type:       *row.Playlist.Type,
+				ImageURL:   *row.Playlist.ImageURL,
 			},
-		}
+		})
 
-		month, err := models.GetMonth(int(row.PlaylistMonth))
+		month, err := models.GetMonth(int(*row.Playlist.Month))
 		if err != nil {
 			env.Logger.ErrorContext(ctx, "Invalid month in playlist", slog.Any("error", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -2065,15 +2096,19 @@ func UpdatePersonalProfile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Must specify a field to update", http.StatusBadRequest)
 		return
 	}
-	if requestBody.Username != nil && !usernameRegex.MatchString(*requestBody.Username) {
-		env.Logger.ErrorContext(ctx, "Invalid username", slog.String("username", *requestBody.Username))
-		http.Error(w, "Invalid username", http.StatusBadRequest)
-		return
+	if requestBody.Username != nil {
+		if err := validateUsername(*requestBody.Username); err != nil {
+			env.Logger.ErrorContext(ctx, "Invalid username", slog.String("username", *requestBody.Username))
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
-	if requestBody.DisplayName != nil && !displayNameRegex.MatchString(*requestBody.DisplayName) {
-		env.Logger.ErrorContext(ctx, "Invalid display name", slog.String("display_name", *requestBody.DisplayName))
-		http.Error(w, "Invalid display name", http.StatusBadRequest)
-		return
+	if requestBody.DisplayName != nil {
+		if err := validateDisplayName(*requestBody.DisplayName); err != nil {
+			env.Logger.ErrorContext(ctx, "Invalid display name", slog.String("display_name", *requestBody.DisplayName), slog.Any("error", err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	if requestBody.Email != nil {
 		if _, err := mail.ParseAddress(*requestBody.Email); err != nil {

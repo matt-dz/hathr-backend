@@ -3,8 +3,10 @@
 package spotify
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	hathrEnv "hathr-backend/internal/env"
+	"hathr-backend/internal/env"
 	hathrHttp "hathr-backend/internal/http"
 	hathrJson "hathr-backend/internal/json"
 	"hathr-backend/internal/spotify/models"
@@ -26,7 +28,7 @@ import (
 const spotifyBaseURL = "https://api.spotify.com/v1"
 const spotifyAuthURL = "https://accounts.spotify.com/"
 
-func LoginUser(login spotifyModels.LoginRequest, env *hathrEnv.Env, ctx context.Context) (spotifyModels.LoginResponse, error) {
+func LoginUser(login spotifyModels.LoginRequest, env *env.Env, ctx context.Context) (spotifyModels.LoginResponse, error) {
 
 	var loginResponse spotifyModels.LoginResponse
 
@@ -86,7 +88,7 @@ func LoginUser(login spotifyModels.LoginRequest, env *hathrEnv.Env, ctx context.
 }
 
 // Get a user's profile via their access token
-func GetUserProfile(bearerToken string, env *hathrEnv.Env, ctx context.Context) (spotifyModels.User, error) {
+func GetUserProfile(bearerToken string, env *env.Env, ctx context.Context) (spotifyModels.User, error) {
 
 	var user spotifyModels.User
 
@@ -128,7 +130,7 @@ func GetUserProfile(bearerToken string, env *hathrEnv.Env, ctx context.Context) 
 	return user, nil
 }
 
-func RefreshToken(refreshToken string, env *hathrEnv.Env, ctx context.Context) (models.RefreshTokenResponse, error) {
+func RefreshToken(refreshToken string, env *env.Env, ctx context.Context) (models.RefreshTokenResponse, error) {
 
 	// Retrieve environment variables
 	var refreshTokenResponse models.RefreshTokenResponse
@@ -183,7 +185,7 @@ func RefreshToken(refreshToken string, env *hathrEnv.Env, ctx context.Context) (
 	return refreshTokenResponse, nil
 }
 
-func GetRecentlyPlayedTracks(accessToken string, after time.Time, env *hathrEnv.Env, ctx context.Context) (spotifyModels.RecentlyPlayedTracksResponse, error) {
+func GetRecentlyPlayedTracks(accessToken string, after time.Time, env *env.Env, ctx context.Context) (spotifyModels.RecentlyPlayedTracksResponse, error) {
 
 	var response spotifyModels.RecentlyPlayedTracksResponse
 
@@ -205,7 +207,7 @@ func GetRecentlyPlayedTracks(accessToken string, after time.Time, env *hathrEnv.
 	}
 
 	// If unsuccessful, return error
-	if res.StatusCode != http.StatusOK {
+	if res.StatusCode > 299 {
 		body, err := io.ReadAll(res.Body)
 		if err != nil {
 			return response, hathrHttp.NewHTTPError(res.StatusCode, res.Status, "")
@@ -220,4 +222,86 @@ func GetRecentlyPlayedTracks(accessToken string, after time.Time, env *hathrEnv.
 	}
 
 	return response, nil
+}
+
+func CreateSpotifyPlaylist(accessToken, userID, name, description string, env *env.Env, ctx context.Context) (spotifyModels.CreatePlaylistResponse, error) {
+
+	var response spotifyModels.CreatePlaylistResponse
+	// Build request
+	body := models.CreatePlaylistRequest{
+		Name:          name,
+		Public:        true,
+		Collaborative: false,
+		Description:   description,
+	}
+	rawBody, err := json.Marshal(body)
+	if err != nil {
+		return response, err
+	}
+	req, err := retryablehttp.NewRequest(http.MethodPost, fmt.Sprintf("%s/users/%s/playlists", spotifyBaseURL, userID), bytes.NewReader(rawBody))
+	if err != nil {
+		return response, err
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+
+	// Send request
+	res, err := env.Http.Do(req)
+	if err != nil {
+		return response, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode > 299 {
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			env.Logger.Error("Failed to read response body", slog.Any("error", err))
+			return response, errors.Join(err, hathrHttp.NewHTTPError(res.StatusCode, res.Status, ""))
+		}
+		return response, hathrHttp.NewHTTPError(res.StatusCode, res.Status, string(body))
+	}
+
+	// Decode response
+	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
+		return response, err
+	}
+
+	return response, nil
+}
+
+func AddTracksToPlaylist(accessToken, playlistID string, trackIDs []string, env *env.Env, ctx context.Context) error {
+	// Build request
+	trackURIs := make([]string, len(trackIDs))
+	for i, id := range trackIDs {
+		trackURIs[i] = fmt.Sprintf("spotify:track:%s", id)
+	}
+	body := models.AddTracksRequest{
+		URIs: trackURIs,
+	}
+	rawBody, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := retryablehttp.NewRequest(http.MethodPost, fmt.Sprintf("%s/playlists/%s/tracks", spotifyBaseURL, playlistID), bytes.NewReader(rawBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+
+	// Send request
+	res, err := env.Http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode > 299 {
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			env.Logger.Error("Failed to read response body", slog.Any("error", err))
+			return errors.Join(err, hathrHttp.NewHTTPError(res.StatusCode, res.Status, ""))
+		}
+		return hathrHttp.NewHTTPError(res.StatusCode, res.Status, string(body))
+	}
+
+	return nil
 }

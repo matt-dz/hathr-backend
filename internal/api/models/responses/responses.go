@@ -60,3 +60,7 @@ type ListRegisteredUsers struct {
 	IDs  []uuid.UUID `json:"ids"`
 	Next uuid.UUID   `json:"next,omitempty"`
 }
+
+type AddPlaylistToSpotify struct {
+	URL string `json:"url"`
+}

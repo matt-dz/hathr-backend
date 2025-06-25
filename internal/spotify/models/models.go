@@ -202,3 +202,21 @@ type SpotifyTrackInput struct {
 	Href       string      `db:"href"`
 	Raw        []byte      `db:"raw"`
 }
+
+type CreatePlaylistRequest struct {
+	Name          string `json:"name"`
+	Public        bool   `json:"public"`
+	Collaborative bool   `json:"collaborative"`
+	Description   string `json:"description"`
+}
+
+// There are more fields, but we only care about these
+type CreatePlaylistResponse struct {
+	ExternalURLs ExternalURLs `json:"external_urls"`
+	ID           string       `json:"id"`
+}
+
+type AddTracksRequest struct {
+	URIs     []string `json:"uris"`
+	Position int      `json:"position,omitempty"`
+}

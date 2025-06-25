@@ -112,6 +112,12 @@ FROM spotify_playlist_tracks ppt
 JOIN spotify_tracks st ON st.id = ppt.track_id
 WHERE ppt.playlist_id = $1;
 
+-- name: GetSpotifyPlaylistTrackIDs :many
+SELECT st.id
+FROM spotify_playlist_tracks ppt
+JOIN spotify_tracks st ON st.id = ppt.track_id
+WHERE ppt.playlist_id = $1;
+
 -- name: GetLatestPrivateKey :one
 SELECT * FROM private_keys
 ORDER BY kid DESC
@@ -414,3 +420,6 @@ WHERE
 SELECT year, month, day, type, image_url
 FROM playlists
 WHERE id = $1;
+
+-- name: GetSpotifyUserID :one
+SELECT spotify_user_id FROM users WHERE id = $1;

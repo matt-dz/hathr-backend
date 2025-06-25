@@ -180,7 +180,7 @@ func extractLargestImage(images []spotifyModels.Image) string {
 	return largestImage.URL
 }
 
-func retrieveSpotifyToken(id uuid.UUID, env *hathrEnv.Env, ctx context.Context) (string, error) {
+func retrieveSpotifyToken(userID uuid.UUID, env *hathrEnv.Env, ctx context.Context) (string, error) {
 	tx, err := env.Database.Begin(ctx)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to begin transaction", slog.Any("error", err))
@@ -190,7 +190,7 @@ func retrieveSpotifyToken(id uuid.UUID, env *hathrEnv.Env, ctx context.Context) 
 	qx := env.Database.WithTx(tx)
 
 	env.Logger.DebugContext(ctx, "Retrieving spotify tokens")
-	tokens, err := qx.GetSpotifyTokens(ctx, id)
+	tokens, err := qx.GetSpotifyTokens(ctx, userID)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to retrieve spotify tokens", slog.Any("error", err))
 		return "", err
@@ -214,7 +214,7 @@ func retrieveSpotifyToken(id uuid.UUID, env *hathrEnv.Env, ctx context.Context) 
 	params := database.UpdateSpotifyTokensParams{
 		AccessToken:  res.AccessToken,
 		Scope:        res.Scope,
-		ID:           id,
+		ID:           userID,
 		RefreshToken: tokens.RefreshToken,
 		TokenExpires: pgtype.Timestamptz{
 			Time:  time.Now().Add(time.Duration(res.ExpiresIn) * time.Second),
@@ -281,7 +281,7 @@ func ServeSpotifyOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	err := json.NewEncoder(w).Encode(map[string]string{
 		"client_id":    os.Getenv("SPOTIFY_CLIENT_ID"),
 		"redirect_uri": os.Getenv("SPOTIFY_REDIRECT_URI"),
-		"scope":        "user-read-private user-read-email user-library-read user-top-read user-read-recently-played",
+		"scope":        "user-read-private user-read-email user-library-read user-top-read user-read-recently-played playlist-modify-public playlist-modify-private ugc-image-upload",
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode metadata", slog.Any("error", err))
@@ -2369,7 +2369,11 @@ func ReleasePlaylists(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	defer r.Body.Close()
-	hathrJson.DecodeJson(&body, decoder)
+	if err := hathrJson.DecodeJson(&body, decoder); err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
 
 	// Validate user ID
 	validate := validator.New()
@@ -2432,7 +2436,11 @@ func CreatePlaylistCover(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	defer r.Body.Close()
-	hathrJson.DecodeJson(&body, decoder)
+	if err := hathrJson.DecodeJson(&body, decoder); err != nil {
+		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
 
 	// Validate user ID
 	env.Logger.DebugContext(ctx, "Validating request body")
@@ -2485,6 +2493,125 @@ func CreatePlaylistCover(w http.ResponseWriter, r *http.Request) {
 
 	// Encode response
 	env.Logger.DebugContext(ctx, "Successfully created playlist image")
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode response", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+}
+
+func AddPlaylistToSpotify(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
+	}
+
+	// Retrieve request parameters
+	playlistID := mux.Vars(r)["playlist_id"]
+	jwt, ok := ctx.Value("jwt").(*jwt.Token)
+	if !ok {
+		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
+		http.Error(w, "JWT not found", http.StatusUnauthorized)
+		return
+	}
+	userID, err := jwt.Claims.GetSubject()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
+		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate user ID
+	env.Logger.DebugContext(ctx, "Validating request body")
+	if err := uuid.Validate(playlistID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid playlist ID in route parameter", slog.Any("error", err))
+		http.Error(w, "Invalid playlist ID in route parameter", http.StatusBadRequest)
+	}
+	if err := uuid.Validate(userID); err != nil {
+		env.Logger.ErrorContext(ctx, "Invalid user ID in JWT", slog.Any("error", err))
+		http.Error(w, "Invalid user ID in JWT", http.StatusBadRequest)
+		return
+	}
+
+	// Retrieve playlist from DB
+	env.Logger.DebugContext(ctx, "Retrieving playlist from DB")
+	playlist, err := env.Database.GetSpotifyPlaylistWithOwner(ctx, uuid.MustParse(playlistID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		env.Logger.ErrorContext(ctx, "Playlist not found", slog.Any("error", err))
+		http.Error(w, "Playlist not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to retrieve playlist", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Validate permissions
+	if userID != playlist.User.ID.String() && playlist.Playlist.Visibility != database.PlaylistVisibilityPublic || playlist.Playlist.Visibility == database.PlaylistVisibilityUnreleased {
+		env.Logger.ErrorContext(ctx, "Unauthorized to add playlist to Spotify", slog.String("user_id", userID), slog.String("playlist_user_id", playlist.User.ID.String()), slog.String("visibility", string(playlist.Playlist.Visibility)))
+		http.Error(w, "Unauthorized to add playlist to Spotify", http.StatusForbidden)
+		return
+	}
+
+	// Retrieve spotify tracks
+	env.Logger.DebugContext(ctx, "Retrieving playlist tracks from DB")
+	ids, err := env.Database.GetSpotifyPlaylistTrackIDs(ctx, uuid.MustParse(playlistID))
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to retrieve playlist tracks", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Retrieve spotify tokens
+	token, err := retrieveSpotifyToken(uuid.MustParse(userID), env, ctx)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Retrieve user spotify id
+	spotifyUserID, err := env.Database.GetSpotifyUserID(ctx, uuid.MustParse(userID))
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to retrieve spotify user ID", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if !spotifyUserID.Valid {
+		env.Logger.ErrorContext(ctx, "No spotify account associated with user")
+		http.Error(w, "No spotify account associated with user", http.StatusNotFound)
+		return
+	}
+
+	// Create spotify playlist
+	env.Logger.DebugContext(ctx, "Creating Spotify playlist")
+	spotifyPlaylist, err := hathrSpotify.CreateSpotifyPlaylist(token, spotifyUserID.String, playlist.Playlist.Name, "Autogenerated playlist by Hathr™", env, ctx)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to create Spotify playlist", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	env.Logger.DebugContext(ctx, "Successfully created Spotify playlist", slog.String("spotify_playlist_id", spotifyPlaylist.ID))
+
+	// Add tracks to spotify playlist
+	env.Logger.DebugContext(ctx, "Adding tracks to Spotify playlist", slog.Int("num_tracks", len(ids)))
+	err = hathrSpotify.AddTracksToPlaylist(token, spotifyPlaylist.ID, ids, env, ctx)
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to add tracks to Spotify playlist", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	env.Logger.DebugContext(ctx, "Successfully Added tracks to Spotify playlist")
+
+	// TODO: Add image to spotify playlist
+
+	// Build response
+	env.Logger.DebugContext(ctx, "Building response")
+	response := responses.AddPlaylistToSpotify{
+		URL: spotifyPlaylist.ExternalURLs.Spotify,
+	}
+	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode response", slog.Any("error", err))

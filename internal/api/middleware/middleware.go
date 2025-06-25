@@ -277,8 +277,12 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 
 	playlist := s.PathPrefix("/playlist").Subrouter()
 	playlist.Use(AuthorizeRequest)
-	playlist.Use(AuthorizeAdminRequest)
-	playlist.HandleFunc("/{user_id}/spotify", handlers.CreateSpotifyPlaylist).Methods("POST", "OPTIONS")
+	playlist.HandleFunc("/{playlist_id}/spotify/add", handlers.AddPlaylistToSpotify).Methods("POST", "OPTIONS")
+
+	adminPlaylist := playlist.NewRoute().Subrouter()
+	adminPlaylist.Use(AuthorizeRequest)
+	adminPlaylist.Use(AuthorizeAdminRequest)
+	adminPlaylist.HandleFunc("/{user_id}/spotify", handlers.CreateSpotifyPlaylist).Methods("POST", "OPTIONS")
 
 	playlistCover := s.PathPrefix("/playlist-cover").Subrouter()
 	playlistCover.Use(AuthorizeRequest)

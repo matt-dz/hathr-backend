@@ -461,6 +461,33 @@ func (q *Queries) GetPrivateKey(ctx context.Context, kid int32) (string, error) 
 	return value, err
 }
 
+const getSpotifyPlaylistTrackIDs = `-- name: GetSpotifyPlaylistTrackIDs :many
+SELECT st.id
+FROM spotify_playlist_tracks ppt
+JOIN spotify_tracks st ON st.id = ppt.track_id
+WHERE ppt.playlist_id = $1
+`
+
+func (q *Queries) GetSpotifyPlaylistTrackIDs(ctx context.Context, playlistID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, getSpotifyPlaylistTrackIDs, playlistID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSpotifyPlaylistTracks = `-- name: GetSpotifyPlaylistTracks :many
 SELECT
   st.id,
@@ -576,6 +603,17 @@ func (q *Queries) GetSpotifyTokens(ctx context.Context, id uuid.UUID) (GetSpotif
 	var i GetSpotifyTokensRow
 	err := row.Scan(&i.AccessToken, &i.RefreshToken, &i.TokenExpires)
 	return i, err
+}
+
+const getSpotifyUserID = `-- name: GetSpotifyUserID :one
+SELECT spotify_user_id FROM users WHERE id = $1
+`
+
+func (q *Queries) GetSpotifyUserID(ctx context.Context, id uuid.UUID) (pgtype.Text, error) {
+	row := q.db.QueryRow(ctx, getSpotifyUserID, id)
+	var spotify_user_id pgtype.Text
+	err := row.Scan(&spotify_user_id)
+	return spotify_user_id, err
 }
 
 const getTopSpotifyTracks = `-- name: GetTopSpotifyTracks :many

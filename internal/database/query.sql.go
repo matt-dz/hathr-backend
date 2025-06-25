@@ -62,6 +62,51 @@ func (q *Queries) AddSpotifyPlaylistTracks(ctx context.Context, arg AddSpotifyPl
 	return err
 }
 
+const areFriends = `-- name: AreFriends :one
+SELECT EXISTS (
+  SELECT 1
+  FROM friendships f
+  WHERE f.user_a_id = LEAST(
+          (SELECT id FROM users u WHERE u.username = $1::text),
+          (SELECT id FROM users u WHERE u.username = $2::text)
+        )
+    AND f.user_b_id = GREATEST(
+          (SELECT id FROM users u WHERE u.username = $1::text),
+          (SELECT id FROM users u WHERE u.username = $2::text)
+        )
+    AND f.status = 'accepted'
+) AS are_friends
+`
+
+type AreFriendsParams struct {
+	UsernameA string `json:"username_a"`
+	UsernameB string `json:"username_b"`
+}
+
+func (q *Queries) AreFriends(ctx context.Context, arg AreFriendsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, areFriends, arg.UsernameA, arg.UsernameB)
+	var are_friends bool
+	err := row.Scan(&are_friends)
+	return are_friends, err
+}
+
+const countFriends = `-- name: CountFriends :one
+SELECT COUNT(f)
+FROM users AS u
+JOIN friendships AS f
+    ON u.id IN (f.user_a_id, f.user_b_id)
+WHERE
+  u.username = $1
+  AND f.status = 'accepted'
+`
+
+func (q *Queries) CountFriends(ctx context.Context, username pgtype.Text) (int64, error) {
+	row := q.db.QueryRow(ctx, countFriends, username)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAdminUser = `-- name: CreateAdminUser :exec
 INSERT INTO users (username, password, email, role, registered_at)
 VALUES ($1, $2, $3, 'admin', now())

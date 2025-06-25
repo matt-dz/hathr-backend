@@ -71,27 +71,6 @@ GROUP BY
     p.created_at, p.visibility, p.year,
     p.month, p.day, p.image_url;
 
-SELECT
-    p.id, p.user_id, COUNT(ppt) AS num_tracks,
-    p.type, p.name, p.created_at, p.visibility,
-    p.year, p.month, p.day, p.image_url
-FROM playlists p
-JOIN spotify_playlist_tracks ppt
-    ON ppt.playlist_id = p.id
-JOIN users u
-    ON u.id = p.user_id
-LEFT JOIN friendships f
-    ON (f.user_a_id = LEAST('cf3e8a6d-f6d3-4dec-9521-5c9d851cd85d'::uuid, p.user_id) AND f.user_b_id = GREATEST('cf3e8a6d-f6d3-4dec-9521-5c9d851cd85d'::uuid, p.user_id))
-WHERE
-    u.username = 'jazzbarn' AND
-    (f.status IS NULL OR f.status <> 'blocked') AND
-    (p.visibility = 'public' OR
-    (p.visibility = 'private' AND p.user_id = @user_id::uuid))
-GROUP BY
-    p.id, p.user_id,  p.type, p.name,
-    p.created_at, p.visibility, p.year,
-    p.month, p.day, p.image_url;
-
 -- name: GetSpotifyPlaylistWithOwner :one
 SELECT
     sqlc.embed(p),
@@ -226,7 +205,6 @@ FROM users AS me
 WHERE
   me.username = $1
   AND f.status = 'accepted';
-
 
 -- name: ListRequests :many
 SELECT
@@ -423,3 +401,27 @@ WHERE id = $1;
 
 -- name: GetSpotifyUserID :one
 SELECT spotify_user_id FROM users WHERE id = $1;
+
+-- name: CountFriends :one
+SELECT COUNT(f)
+FROM users AS u
+JOIN friendships AS f
+    ON u.id IN (f.user_a_id, f.user_b_id)
+WHERE
+  u.username = $1
+  AND f.status = 'accepted';
+
+-- name: AreFriends :one
+SELECT EXISTS (
+  SELECT 1
+  FROM friendships f
+  WHERE f.user_a_id = LEAST(
+          (SELECT id FROM users u WHERE u.username = @username_a::text),
+          (SELECT id FROM users u WHERE u.username = @username_b::text)
+        )
+    AND f.user_b_id = GREATEST(
+          (SELECT id FROM users u WHERE u.username = @username_a::text),
+          (SELECT id FROM users u WHERE u.username = @username_b::text)
+        )
+    AND f.status = 'accepted'
+) AS are_friends;

@@ -1158,7 +1158,7 @@ func UpdateVisibility(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func ListFriends(w http.ResponseWriter, r *http.Request) {
+func CountFriends(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
@@ -1167,57 +1167,58 @@ func ListFriends(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve request parameters
-	env.Logger.DebugContext(ctx, "Retrieving request parameters")
-	jwt, ok := ctx.Value("jwt").(*jwt.Token)
-	if !ok {
-		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		http.Error(w, "JWT not found", http.StatusUnauthorized)
-		return
-	}
-	userID, err := jwt.Claims.GetSubject()
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
-		return
-	}
+	username := mux.Vars(r)["username"]
 
-	// Validate parameters
-	env.Logger.DebugContext(ctx, "Validating parameters")
-	if err := uuid.Validate(userID); err != nil {
-		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
-		return
-	}
-
-	// List friends
-	env.Logger.DebugContext(ctx, "Listing friends from DB")
-	friends, err := env.Database.ListFriendsByID(ctx, uuid.MustParse(userID))
+	// Retrieve friend count
+	env.Logger.DebugContext(ctx, "Retrieving friend count from DB")
+	friends, err := env.Database.CountFriends(ctx, pgtype.Text{String: username, Valid: true})
 	if err != nil {
-		env.Logger.ErrorContext(ctx, "Unable to list friends", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Failed to retrieve friend count", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	// Process friends data
-	env.Logger.DebugContext(ctx, "Processing friends data")
-	responseFriends := make([]models.PublicUser, len(friends))
-	for i, f := range friends {
-		user, err := buildPublicUser(f)
-		if err != nil {
-			env.Logger.ErrorContext(ctx, "Unable to build user", slog.Any("error", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-		responseFriends[i] = user
+	// Build response
+	env.Logger.DebugContext(ctx, "Building response")
+	w.Header().Add("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(responses.CountFriends{Count: uint(friends)})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to build response", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+}
+
+func AreFriends(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+	if !ok {
+		env = hathrEnv.Null()
 	}
 
-	// Encode response
-	env.Logger.DebugContext(ctx, "Encoding response")
-	err = json.NewEncoder(w).Encode(responses.ListFriends{
-		Friends: responseFriends,
+	// Retrieve request parameters
+	env.Logger.DebugContext(ctx, "Retrieving request paramters")
+	usernameA := r.URL.Query().Get("username_a")
+	usernameB := r.URL.Query().Get("username_b")
+
+	// Check db for friendship
+	env.Logger.DebugContext(ctx, "Checking if friendship exists in DB")
+	areFriends, err := env.Database.AreFriends(ctx, database.AreFriendsParams{
+		UsernameA: usernameA,
+		UsernameB: usernameB,
 	})
 	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to encode friends response", slog.Any("error", err))
+		env.Logger.ErrorContext(ctx, "Query failed", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Build response
+	env.Logger.DebugContext(ctx, "Building response")
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(responses.AreFriends{AreFriends: areFriends})
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to encode response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}

@@ -291,7 +291,9 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 
 	friendships := s.PathPrefix("/friendships").Subrouter()
 	friendships.Use(AuthorizeRequest)
-	friendships.HandleFunc("", handlers.ListFriends).Methods("GET", "OPTIONS")
+	friendships.Path("").HandlerFunc(handlers.AreFriends).Methods("GET", "OPTIONS")
+	friendships.HandleFunc("/{username}/count", handlers.CountFriends).Methods("GET", "OPTIONS")
+	friendships.HandleFunc("/{username}", handlers.GetUserFriends).Methods("GET", "OPTIONS")
 	friendships.HandleFunc("/{id}", handlers.RemoveFriend).Methods("DELETE", "OPTIONS")
 
 	friendRequests := s.PathPrefix("/friend-requests").Subrouter()
@@ -309,9 +311,8 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	users.Use(AuthorizeRequest)
 	users.HandleFunc("/{username}", handlers.GetUserByUsername).Methods("GET", "OPTIONS")
 	users.HandleFunc("/{username}/playlists", handlers.GetUserPlaylists).Methods("GET", "OPTIONS")
-	users.HandleFunc("/{username}/friends", handlers.GetUserFriends).Methods("GET", "OPTIONS")
 
-	adminUsers := users.PathPrefix("").Subrouter()
+	adminUsers := users.NewRoute().Subrouter()
 	adminUsers.Use(AuthorizeRequest)
 	adminUsers.Use(AuthorizeAdminRequest)
 	adminUsers.HandleFunc("", handlers.ListRegisteredUsers).Methods("GET", "OPTIONS")

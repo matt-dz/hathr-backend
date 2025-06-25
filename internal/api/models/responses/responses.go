@@ -64,3 +64,11 @@ type ListRegisteredUsers struct {
 type AddPlaylistToSpotify struct {
 	URL string `json:"url"`
 }
+
+type CountFriends struct {
+	Count uint `json:"count"`
+}
+
+type AreFriends struct {
+	AreFriends bool `json:"are_friends"`
+}

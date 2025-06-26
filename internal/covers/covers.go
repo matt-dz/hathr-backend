@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"hathr-backend/internal/api/models"
@@ -150,6 +149,6 @@ func WeeklyPlaylistCoverURL(startMonth models.Month, startYear uint16, startDay 
 	startDate := time.Date(int(startYear), time.Month(startMonth.Index()+1), int(startDay), 0, 0, 0, 0, time.Local)
 	endDate := startDate.AddDate(0, 0, 7)
 	startDateStr := fmt.Sprintf("%s_%d", startMonth, startDay)
-	endDateStr := fmt.Sprintf("%s_%d", endDate.Month(), endDate.Day())
-	return fmt.Sprintf("https://%s/%s/weekly/%d/%s/%s-%s.png", s3Url, playlistCoverBucket, endDate.Year(), strings.ToLower(endDate.Month().String()), startDateStr, endDateStr), nil
+	endDateStr := fmt.Sprintf("%s_%d", models.ToMonth(endDate.Month()), endDate.Day())
+	return fmt.Sprintf("https://%s/%s/weekly/%d/%s/%s-%s.png", s3Url, playlistCoverBucket, endDate.Year(), models.ToMonth(endDate.Month()), startDateStr, endDateStr), nil
 }

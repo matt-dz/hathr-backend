@@ -37,7 +37,7 @@ type UpdateVisibility struct {
 }
 
 type CreateFriendRequest struct {
-	UserID uuid.UUID `json:"user_id" validate:"required"`
+	Username string `json:"username" validate:"required"`
 }
 
 type UpdateFriendshipStatus struct {

@@ -69,6 +69,6 @@ type CountFriends struct {
 	Count uint `json:"count"`
 }
 
-type AreFriends struct {
-	AreFriends bool `json:"are_friends"`
+type GetFriendshipStatus struct {
+	Friendship *database.Friendship `json:"friendship"`
 }

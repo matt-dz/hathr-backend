@@ -150,9 +150,15 @@ INSERT INTO friendships (
   responded_at
 )
 VALUES (
-  LEAST(@requester::uuid, @requestee::uuid),
-  GREATEST(@requester::uuid, @requestee::uuid),
-  @requester::uuid,
+  LEAST(
+    @requester_id::uuid,
+    (SELECT id FROM users WHERE username = @requestee_username::text)
+  ),
+  GREATEST(
+    @requester_id::uuid,
+    (SELECT id FROM users WHERE username = @requestee_username::text)
+  ),
+  @requester_id::uuid,
   'pending',
   now(),
   NULL
@@ -162,8 +168,16 @@ RETURNING *;
 
 -- name: DeleteFriendRequest :execrows
 DELETE FROM friendships
-    WHERE user_a_id = LEAST(@requester_id::uuid, @requestee_id::uuid) AND user_b_id = GREATEST(@requester_id::uuid, @requestee_id::uuid)
-    AND status = 'pending';
+    WHERE
+        user_a_id = LEAST(
+            @canceler_id::uuid,
+            (SELECT id FROM users WHERE username = @cancelee_username::text)
+        )
+        AND user_b_id = GREATEST(
+            @canceler_id::uuid,
+            (SELECT id FROM users WHERE username = @cancelee_username::text)
+        )
+        AND status = 'pending';
 
 -- name: AcceptFriendRequest :one
 UPDATE friendships
@@ -171,15 +185,26 @@ UPDATE friendships
         status = 'accepted',
         responded_at = NOW()
     WHERE
-        status = 'pending' AND
-        user_a_id = LEAST(@responder_id::uuid, @respondee_id::uuid) AND
-        user_b_id = GREATEST(@responder_id::uuid, @respondee_id::uuid) AND
-        requester_id <> @responder_id::uuid
+        status = 'pending'
+        AND user_a_id = LEAST(
+            @responder_id::uuid,
+            (SELECT id FROM users WHERE username = @respondee_username::text)
+        ) AND user_b_id = GREATEST(
+            @responder_id::uuid,
+            (SELECT id FROM users WHERE username = @respondee_username::text)
+        ) AND requester_id <> @responder_id::uuid
 RETURNING *;
 
 -- name: RemoveFriendship :execrows
 DELETE FROM friendships
-    WHERE user_a_id = LEAST(@user_a_id::uuid, @user_b_id::uuid) AND user_b_id = GREATEST(@user_a_id::uuid, @user_b_id::uuid);
+    WHERE
+        user_a_id = LEAST(
+            @user_a_id::uuid,
+            (SELECT id FROM users WHERE username = @user_b_username::text)
+        )  AND user_b_id = GREATEST(
+            @user_a_id::uuid,
+            (SELECT id FROM users WHERE username = @user_b_username::text)
+        ) AND status = 'accepted';
 
 -- name: ListFriendsByID :many
 SELECT u.*
@@ -411,17 +436,14 @@ WHERE
   u.username = $1
   AND f.status = 'accepted';
 
--- name: AreFriends :one
-SELECT EXISTS (
-  SELECT 1
-  FROM friendships f
-  WHERE f.user_a_id = LEAST(
-          (SELECT id FROM users u WHERE u.username = @username_a::text),
-          (SELECT id FROM users u WHERE u.username = @username_b::text)
-        )
-    AND f.user_b_id = GREATEST(
-          (SELECT id FROM users u WHERE u.username = @username_a::text),
-          (SELECT id FROM users u WHERE u.username = @username_b::text)
-        )
-    AND f.status = 'accepted'
-) AS are_friends;
+-- name: GetFriendshipStatus :one
+SELECT f.*
+FROM friendships f
+WHERE f.user_a_id = LEAST(
+        (SELECT id FROM users u WHERE u.username = @username_a::text),
+        (SELECT id FROM users u WHERE u.username = @username_b::text)
+    )
+AND f.user_b_id = GREATEST(
+        (SELECT id FROM users u WHERE u.username = @username_a::text),
+        (SELECT id FROM users u WHERE u.username = @username_b::text)
+    );

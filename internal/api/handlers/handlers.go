@@ -1189,7 +1189,7 @@ func CountFriends(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func AreFriends(w http.ResponseWriter, r *http.Request) {
+func GetFriendshipStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
 	if !ok {
@@ -1202,12 +1202,16 @@ func AreFriends(w http.ResponseWriter, r *http.Request) {
 	usernameB := r.URL.Query().Get("username_b")
 
 	// Check db for friendship
+	var response responses.GetFriendshipStatus
 	env.Logger.DebugContext(ctx, "Checking if friendship exists in DB")
-	areFriends, err := env.Database.AreFriends(ctx, database.AreFriendsParams{
+	friendship, err := env.Database.GetFriendshipStatus(ctx, database.GetFriendshipStatusParams{
 		UsernameA: usernameA,
 		UsernameB: usernameB,
 	})
-	if err != nil {
+	response.Friendship = &friendship
+	if errors.Is(err, pgx.ErrNoRows) {
+		response.Friendship = nil
+	} else if err != nil {
 		env.Logger.ErrorContext(ctx, "Query failed", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -1216,8 +1220,7 @@ func AreFriends(w http.ResponseWriter, r *http.Request) {
 	// Build response
 	env.Logger.DebugContext(ctx, "Building response")
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(responses.AreFriends{AreFriends: areFriends})
-	if err != nil {
+	if err = json.NewEncoder(w).Encode(response); err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -1233,7 +1236,7 @@ func RemoveFriend(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve request parameters
 	env.Logger.DebugContext(ctx, "Retrieving request parameters")
-	friendID := mux.Vars(r)["id"]
+	friendUsername := mux.Vars(r)["username"]
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
@@ -1249,11 +1252,6 @@ func RemoveFriend(w http.ResponseWriter, r *http.Request) {
 
 	// Validate parameters
 	env.Logger.DebugContext(ctx, "Validating parameters")
-	if err := uuid.Validate(friendID); err != nil {
-		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
-		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
-		return
-	}
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid friend id", slog.Any("error", err))
 		http.Error(w, "Invalid ID in route parameter", http.StatusBadRequest)
@@ -1261,8 +1259,8 @@ func RemoveFriend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := env.Database.RemoveFriendship(ctx, database.RemoveFriendshipParams{
-		UserAID: uuid.MustParse(userID),
-		UserBID: uuid.MustParse(friendID),
+		UserAID:       uuid.MustParse(userID),
+		UserBUsername: friendUsername,
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to remove friendship", slog.Any("error", err))
@@ -1405,25 +1403,9 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
-
-	var friendRequest requests.CreateFriendRequest
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	defer r.Body.Close()
-	err = hathrJson.DecodeJson(&friendRequest, decoder)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Unable to decode request", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
+	username := mux.Vars(r)["username"]
 
 	// Validate request body
-	validate := validator.New(validator.WithRequiredStructEnabled())
-	if err := validate.Struct(friendRequest); err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to validate request body", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
 	if err := uuid.Validate(userID); err != nil {
 		env.Logger.ErrorContext(ctx, "Invalid ID in JWT", slog.Any("error", err))
 		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
@@ -1433,8 +1415,8 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 	// Creating friend request in the database
 	env.Logger.DebugContext(ctx, "Creating friend request in DB")
 	friendship, err := env.Database.CreateFriendRequest(ctx, database.CreateFriendRequestParams{
-		Requester: uuid.MustParse(userID),
-		Requestee: friendRequest.UserID,
+		RequesterID:       uuid.MustParse(userID),
+		RequesteeUsername: username,
 	})
 
 	var pgErr *pgconn.PgError
@@ -1447,7 +1429,7 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// canonical_form violation - only way this is reached is if the user tries to befriend themselves
-		if pgErr.Code == "23514" && pgErr.ConstraintName == "canonical_form" {
+		if pgErr.Code == "23514" && pgErr.ConstraintName == "requester_is_user" {
 			env.Logger.ErrorContext(ctx, "check violation", slog.Any("error", err))
 			http.Error(w, "User cannot be-friend themself", http.StatusConflict)
 			return
@@ -1461,12 +1443,12 @@ func CreateFriendRequest(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: Send notification to the user about the friend request
 	env.Logger.DebugContext(ctx, "Encoding response")
+	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(friendship); err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusCreated)
 }
 
 func DeleteFriendRequest(w http.ResponseWriter, r *http.Request) {
@@ -1490,7 +1472,7 @@ func DeleteFriendRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
 	}
-	requesteeID := mux.Vars(r)["id"]
+	canceleeUsername := mux.Vars(r)["username"]
 
 	// Validate request parameters
 	if err := uuid.Validate(userID); err != nil {
@@ -1498,17 +1480,12 @@ func DeleteFriendRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
-	if err := uuid.Validate(requesteeID); err != nil {
-		env.Logger.ErrorContext(ctx, "Invalid friend ID in route parameter", slog.Any("error", err))
-		http.Error(w, "Invalid ID in route parameter", http.StatusBadRequest)
-		return
-	}
 
 	// Remove friend request in the database
 	env.Logger.DebugContext(ctx, "Removing friend request in DB")
 	rows, err := env.Database.DeleteFriendRequest(ctx, database.DeleteFriendRequestParams{
-		RequesterID: uuid.MustParse(userID),
-		RequesteeID: uuid.MustParse(requesteeID),
+		CancelerID:       uuid.MustParse(userID),
+		CanceleeUsername: canceleeUsername,
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to cancel friend request", slog.Any("error", err))
@@ -1535,7 +1512,7 @@ func UpdateFriendshipStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve request parameters
 	env.Logger.DebugContext(ctx, "Retrieving request parameters")
-	requesterID := mux.Vars(r)["id"]
+	username := mux.Vars(r)["username"]
 	jwt, ok := ctx.Value("jwt").(*jwt.Token)
 	if !ok {
 		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
@@ -1572,18 +1549,13 @@ func UpdateFriendshipStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid ID in JWT", http.StatusBadRequest)
 		return
 	}
-	if err := uuid.Validate(requesterID); err != nil {
-		env.Logger.ErrorContext(ctx, "Invalid friend ID in route parameter", slog.Any("error", err))
-		http.Error(w, "Invalid ID in route parameter", http.StatusBadRequest)
-		return
-	}
 
 	// TODO: add blocking status
 	// Respond to friend request in the database
 	env.Logger.DebugContext(ctx, "Updating friend request in DB")
 	friendship, err := env.Database.AcceptFriendRequest(ctx, database.AcceptFriendRequestParams{
-		ResponderID: uuid.MustParse(userID),
-		RespondeeID: uuid.MustParse(requesterID),
+		ResponderID:       uuid.MustParse(userID),
+		RespondeeUsername: username,
 	})
 
 	if errors.Is(err, pgx.ErrNoRows) {

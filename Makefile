@@ -12,7 +12,7 @@ ifneq (,$(wildcard ./.env))
     export
 endif
 
-all: build
+all: build-server
 
 build-server:
 	@echo "🔨  Building $(SERVER_BIN)…"
@@ -24,9 +24,9 @@ build-cli:
 	go build -o $(BINDIR)/$(CLI_BIN) cmd/cli/main.go
 	@echo "✓  Built $(BINDIR)/$(CLI_BIN)"
 
-docker-build:
+docker-build-server:
 	@echo "🔨🐳 Building docker image $(SERVER_BIN)…"
-	docker build . -t $(DOCKER_TAG)
+	docker build -f server.Dockerfile . -t $(DOCKER_TAG)
 	@echo "✓  Built $(DOCKER_TAG)"
 
 run-server:

@@ -291,17 +291,17 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 
 	friendships := s.PathPrefix("/friendships").Subrouter()
 	friendships.Use(AuthorizeRequest)
-	friendships.Path("").HandlerFunc(handlers.AreFriends).Methods("GET", "OPTIONS")
+	friendships.Path("").HandlerFunc(handlers.GetFriendshipStatus).Methods("GET", "OPTIONS")
 	friendships.HandleFunc("/{username}/count", handlers.CountFriends).Methods("GET", "OPTIONS")
 	friendships.HandleFunc("/{username}", handlers.GetUserFriends).Methods("GET", "OPTIONS")
-	friendships.HandleFunc("/{id}", handlers.RemoveFriend).Methods("DELETE", "OPTIONS")
+	friendships.HandleFunc("/{username}", handlers.RemoveFriend).Methods("DELETE", "OPTIONS")
 
 	friendRequests := s.PathPrefix("/friend-requests").Subrouter()
 	friendRequests.Use(AuthorizeRequest)
 	friendRequests.HandleFunc("", handlers.ListRequests).Methods("GET", "OPTIONS")
-	friendRequests.HandleFunc("", handlers.CreateFriendRequest).Methods("POST", "OPTIONS")
-	friendRequests.HandleFunc("/{id}", handlers.UpdateFriendshipStatus).Methods("PATCH", "OPTIONS")
-	friendRequests.HandleFunc("/{id}", handlers.DeleteFriendRequest).Methods("DELETE", "OPTIONS")
+	friendRequests.HandleFunc("/{username}", handlers.CreateFriendRequest).Methods("POST", "OPTIONS")
+	friendRequests.HandleFunc("/{username}", handlers.UpdateFriendshipStatus).Methods("PATCH", "OPTIONS")
+	friendRequests.HandleFunc("/{username}", handlers.DeleteFriendRequest).Methods("DELETE", "OPTIONS")
 
 	search := s.PathPrefix("/search").Subrouter()
 	search.Use(AuthorizeRequest)

@@ -19,20 +19,24 @@ UPDATE friendships
         status = 'accepted',
         responded_at = NOW()
     WHERE
-        status = 'pending' AND
-        user_a_id = LEAST($1::uuid, $2::uuid) AND
-        user_b_id = GREATEST($1::uuid, $2::uuid) AND
-        requester_id <> $1::uuid
+        status = 'pending'
+        AND user_a_id = LEAST(
+            $1::uuid,
+            (SELECT id FROM users WHERE username = $2::text)
+        ) AND user_b_id = GREATEST(
+            $1::uuid,
+            (SELECT id FROM users WHERE username = $2::text)
+        ) AND requester_id <> $1::uuid
 RETURNING user_a_id, user_b_id, requester_id, status, requested_at, responded_at
 `
 
 type AcceptFriendRequestParams struct {
-	ResponderID uuid.UUID `json:"responder_id"`
-	RespondeeID uuid.UUID `json:"respondee_id"`
+	ResponderID       uuid.UUID `json:"responder_id"`
+	RespondeeUsername string    `json:"respondee_username"`
 }
 
 func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendRequestParams) (Friendship, error) {
-	row := q.db.QueryRow(ctx, acceptFriendRequest, arg.ResponderID, arg.RespondeeID)
+	row := q.db.QueryRow(ctx, acceptFriendRequest, arg.ResponderID, arg.RespondeeUsername)
 	var i Friendship
 	err := row.Scan(
 		&i.UserAID,
@@ -60,34 +64,6 @@ type AddSpotifyPlaylistTracksParams struct {
 func (q *Queries) AddSpotifyPlaylistTracks(ctx context.Context, arg AddSpotifyPlaylistTracksParams) error {
 	_, err := q.db.Exec(ctx, addSpotifyPlaylistTracks, arg.PlaylistID, arg.TrackIds)
 	return err
-}
-
-const areFriends = `-- name: AreFriends :one
-SELECT EXISTS (
-  SELECT 1
-  FROM friendships f
-  WHERE f.user_a_id = LEAST(
-          (SELECT id FROM users u WHERE u.username = $1::text),
-          (SELECT id FROM users u WHERE u.username = $2::text)
-        )
-    AND f.user_b_id = GREATEST(
-          (SELECT id FROM users u WHERE u.username = $1::text),
-          (SELECT id FROM users u WHERE u.username = $2::text)
-        )
-    AND f.status = 'accepted'
-) AS are_friends
-`
-
-type AreFriendsParams struct {
-	UsernameA string `json:"username_a"`
-	UsernameB string `json:"username_b"`
-}
-
-func (q *Queries) AreFriends(ctx context.Context, arg AreFriendsParams) (bool, error) {
-	row := q.db.QueryRow(ctx, areFriends, arg.UsernameA, arg.UsernameB)
-	var are_friends bool
-	err := row.Scan(&are_friends)
-	return are_friends, err
 }
 
 const countFriends = `-- name: CountFriends :one
@@ -133,8 +109,14 @@ INSERT INTO friendships (
   responded_at
 )
 VALUES (
-  LEAST($1::uuid, $2::uuid),
-  GREATEST($1::uuid, $2::uuid),
+  LEAST(
+    $1::uuid,
+    (SELECT id FROM users WHERE username = $2::text)
+  ),
+  GREATEST(
+    $1::uuid,
+    (SELECT id FROM users WHERE username = $2::text)
+  ),
   $1::uuid,
   'pending',
   now(),
@@ -144,12 +126,12 @@ RETURNING user_a_id, user_b_id, requester_id, status, requested_at, responded_at
 `
 
 type CreateFriendRequestParams struct {
-	Requester uuid.UUID `json:"requester"`
-	Requestee uuid.UUID `json:"requestee"`
+	RequesterID       uuid.UUID `json:"requester_id"`
+	RequesteeUsername string    `json:"requestee_username"`
 }
 
 func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) (Friendship, error) {
-	row := q.db.QueryRow(ctx, createFriendRequest, arg.Requester, arg.Requestee)
+	row := q.db.QueryRow(ctx, createFriendRequest, arg.RequesterID, arg.RequesteeUsername)
 	var i Friendship
 	err := row.Scan(
 		&i.UserAID,
@@ -321,17 +303,25 @@ func (q *Queries) CreateWeeklySpotifyPlaylist(ctx context.Context, arg CreateWee
 
 const deleteFriendRequest = `-- name: DeleteFriendRequest :execrows
 DELETE FROM friendships
-    WHERE user_a_id = LEAST($1::uuid, $2::uuid) AND user_b_id = GREATEST($1::uuid, $2::uuid)
-    AND status = 'pending'
+    WHERE
+        user_a_id = LEAST(
+            $1::uuid,
+            (SELECT id FROM users WHERE username = $2::text)
+        )
+        AND user_b_id = GREATEST(
+            $1::uuid,
+            (SELECT id FROM users WHERE username = $2::text)
+        )
+        AND status = 'pending'
 `
 
 type DeleteFriendRequestParams struct {
-	RequesterID uuid.UUID `json:"requester_id"`
-	RequesteeID uuid.UUID `json:"requestee_id"`
+	CancelerID       uuid.UUID `json:"canceler_id"`
+	CanceleeUsername string    `json:"cancelee_username"`
 }
 
 func (q *Queries) DeleteFriendRequest(ctx context.Context, arg DeleteFriendRequestParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteFriendRequest, arg.RequesterID, arg.RequesteeID)
+	result, err := q.db.Exec(ctx, deleteFriendRequest, arg.CancelerID, arg.CanceleeUsername)
 	if err != nil {
 		return 0, err
 	}
@@ -364,6 +354,38 @@ func (q *Queries) GetAdminUser(ctx context.Context, username pgtype.Text) (GetAd
 		&i.RegisteredAt,
 		&i.RefreshToken,
 		&i.Password,
+	)
+	return i, err
+}
+
+const getFriendshipStatus = `-- name: GetFriendshipStatus :one
+SELECT f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
+FROM friendships f
+WHERE f.user_a_id = LEAST(
+        (SELECT id FROM users u WHERE u.username = $1::text),
+        (SELECT id FROM users u WHERE u.username = $2::text)
+    )
+AND f.user_b_id = GREATEST(
+        (SELECT id FROM users u WHERE u.username = $1::text),
+        (SELECT id FROM users u WHERE u.username = $2::text)
+    )
+`
+
+type GetFriendshipStatusParams struct {
+	UsernameA string `json:"username_a"`
+	UsernameB string `json:"username_b"`
+}
+
+func (q *Queries) GetFriendshipStatus(ctx context.Context, arg GetFriendshipStatusParams) (Friendship, error) {
+	row := q.db.QueryRow(ctx, getFriendshipStatus, arg.UsernameA, arg.UsernameB)
+	var i Friendship
+	err := row.Scan(
+		&i.UserAID,
+		&i.UserBID,
+		&i.RequesterID,
+		&i.Status,
+		&i.RequestedAt,
+		&i.RespondedAt,
 	)
 	return i, err
 }
@@ -1230,16 +1252,23 @@ func (q *Queries) ReleaseWeeklyPlaylists(ctx context.Context, arg ReleaseWeeklyP
 
 const removeFriendship = `-- name: RemoveFriendship :execrows
 DELETE FROM friendships
-    WHERE user_a_id = LEAST($1::uuid, $2::uuid) AND user_b_id = GREATEST($1::uuid, $2::uuid)
+    WHERE
+        user_a_id = LEAST(
+            $1::uuid,
+            (SELECT id FROM users WHERE username = $2::text)
+        )  AND user_b_id = GREATEST(
+            $1::uuid,
+            (SELECT id FROM users WHERE username = $2::text)
+        ) AND status = 'accepted'
 `
 
 type RemoveFriendshipParams struct {
-	UserAID uuid.UUID `json:"user_a_id"`
-	UserBID uuid.UUID `json:"user_b_id"`
+	UserAID       uuid.UUID `json:"user_a_id"`
+	UserBUsername string    `json:"user_b_username"`
 }
 
 func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipParams) (int64, error) {
-	result, err := q.db.Exec(ctx, removeFriendship, arg.UserAID, arg.UserBID)
+	result, err := q.db.Exec(ctx, removeFriendship, arg.UserAID, arg.UserBUsername)
 	if err != nil {
 		return 0, err
 	}

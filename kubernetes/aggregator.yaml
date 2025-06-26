@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: aggregate-plays
+  namespace: hathr
+spec:
+  # run at minute 0 and 30 of every hour
+  schedule: "*/30 * * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: aggregate-plays
+              image: matthew10125/hathr-cli:latest
+              args:
+                - aggregate-plays
+              env:
+                - name: HATHR_USERNAME
+                  value: "${HATHR_USERNAME}"
+                - name: HATHR_PASSWORD
+                  value: "${HATHR_PASSWORD}"
+                - name: HATHR_BACKEND_URL
+                  value: "${HATHR_BACKEND_URL}"

@@ -18,14 +18,6 @@ var rootCmd = &cobra.Command{
 	Use:   "hathr",
 	Short: "Hathr CLI",
 	Args:  cobra.OnlyValidArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		logger := logging.New()
-		httpclient := http.New()
-		httpclient.RetryMax = 5
-		httpclient.Logger = logger
-		env := env.New(logger, nil, httpclient)
-		run(cmd, args, env)
-	},
 }
 
 var generateCmd = &cobra.Command{
@@ -71,9 +63,6 @@ func init() {
 	generateCmd.Flags().String("playlist-type", "weekly", "playlist type to generate (weekly, monthly)")
 	releaseCmd.Flags().String("playlist-type", "weekly", "playlist type to generate (weekly, monthly)")
 	rootCmd.AddCommand(generateCmd, releaseCmd, aggregateCmd)
-}
-
-func run(cmd *cobra.Command, _ []string, env *env.Env) {
 }
 
 func Execute() {

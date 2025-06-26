@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: weekly-playlist-generator
+  namespace: hathr
+spec:
+  schedule: "0 18 * * 5" # Every Friday at 6 PM
+  concurrencyPolicy: Allow
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: weekly-playlist-generator
+              image: matthew10125/hathr-cli:latest
+              args:
+                - generate-playlist
+                - --playlist-type=weekly
+              env:
+                - name: HATHR_USERNAME
+                  value: "${HATHR_USERNAME}"
+                - name: HATHR_PASSWORD
+                  value: "${HATHR_PASSWORD}"
+                - name: HATHR_BACKEND_URL
+                  value: "${HATHR_BACKEND_URL}"
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: weekly-playlist-releaser
+  namespace: hathr
+spec:
+  schedule: "0 19 * * 5" # Every Friday at 7 PM
+  concurrencyPolicy: Allow
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: weekly-playlist-releaser
+              image: matthew10125/hathr-cli:latest
+              args:
+                - release-playlist
+                - --playlist-type=weekly
+              env:
+                - name: HATHR_USERNAME
+                  value: "${HATHR_USERNAME}"
+                - name: HATHR_PASSWORD
+                  value: "${HATHR_PASSWORD}"
+                - name: HATHR_BACKEND_URL
+                  value: "${HATHR_BACKEND_URL}"

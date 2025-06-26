@@ -29,6 +29,11 @@ docker-build-server:
 	docker build -f server.Dockerfile . -t $(DOCKER_TAG)
 	@echo "✓  Built $(DOCKER_TAG)"
 
+docker-build-cli:
+	@echo "🔨🐳 Building docker image $(CLI_BIN)…"
+	docker build -f cli.Dockerfile . -t $(CLI_BIN)
+	@echo "✓  Built $(CLI_BIN)"
+
 run-server:
 	@echo "🚀  Starting..."
 	go run $(SERVER_DIR)/main.go

@@ -76,11 +76,10 @@ func Run(cmd *cobra.Command, _ []string, env *env.Env) {
 					env.Logger.Error("Failed to create playlist", slog.String("user_id", userID.String()), slog.Any("error", err))
 				}
 			}()
-
-			wg.Wait()
-			next = users.Next
-			env.Logger.Info("All users in batch processed", slog.String("next", users.Next.String()))
 		}
+		wg.Wait()
+		next = users.Next
+		env.Logger.Info("All users in batch processed", slog.String("next", users.Next.String()))
 	}
 
 	env.Logger.Info("All users processed")

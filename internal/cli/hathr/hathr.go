@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"hathr-backend/internal/api/models"
@@ -115,7 +114,7 @@ func CreateMonthlyPlaylist(currentTime time.Time, userID uuid.UUID, bearerToken 
 
 	// Create request
 	requestBody := requests.CreatePlaylist{
-		Month:    models.Month(strings.ToLower(previousMonth.Month().String())),
+		Month:    models.ToMonth(previousMonth.Month()),
 		Year:     uint16(previousMonth.Year()),
 		Provider: "spotify",
 		Type:     "monthly",
@@ -159,7 +158,7 @@ func CreateWeeklyPlaylist(weekEnd time.Time, userID uuid.UUID, bearerToken strin
 		Hour:     uint8(weekStart.Hour()),
 		Day:      uint8(weekStart.Day()),
 		Year:     uint16(weekStart.Year()),
-		Month:    models.Month(strings.ToLower(weekStart.Month().String())),
+		Month:    models.ToMonth(weekStart.Month()),
 		Provider: "spotify",
 		Type:     "weekly",
 	}
@@ -198,7 +197,7 @@ func ReleaseWeeklyPlaylist(weekEnd time.Time, bearerToken string, env *env.Env) 
 	requestBody := requests.ReleasePlaylists{
 		Day:      uint8(weekStart.Day()),
 		Year:     uint16(weekStart.Year()),
-		Month:    models.Month(strings.ToLower(weekStart.Month().String())),
+		Month:    models.ToMonth(weekStart.Month()),
 		Type:     "weekly",
 		Provider: "spotify",
 	}
@@ -234,7 +233,7 @@ func ReleaseMonthlyPlaylist(currentTime time.Time, bearerToken string, env *env.
 	previousMonth := currentTime.AddDate(0, -1, 0)
 	requestBody := requests.ReleasePlaylists{
 		Year:     uint16(previousMonth.Year()),
-		Month:    models.Month(strings.ToLower(previousMonth.Month().String())),
+		Month:    models.ToMonth(previousMonth.Month()),
 		Type:     "monthly",
 		Provider: "spotify",
 	}
@@ -302,5 +301,76 @@ func AggregatePlays(userID uuid.UUID, after time.Time, bearerToken string, env *
 	}
 
 	env.Logger.DebugContext(ctx, "Successfully updated plays for user")
+	return nil
+}
+
+func CreateWeeklyPlaylistCover(day uint8, month time.Month, year uint16, bearerToken string, env *env.Env) error {
+	// Build request
+	url := fmt.Sprintf("%s/api/playlist-cover", backendUrl)
+	requestBody := requests.CreatePlaylistImage{
+		Type:  "weekly",
+		Day:   day,
+		Year:  year,
+		Month: models.ToMonth(month),
+	}
+	rawBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return err
+	}
+	req, err := retryablehttp.NewRequest(http.MethodPost, url, bytes.NewReader(rawBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Authorization", bearerToken)
+
+	// Send request
+	res, err := env.Http.Do(req)
+	if err != nil {
+		return err
+	}
+	if res.StatusCode > 299 {
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			env.Logger.Error("Failed to read response body", slog.Any("error", err))
+			return errors.Join(err, hathrHttp.NewHTTPError(res.StatusCode, res.Status, ""))
+		}
+		return hathrHttp.NewHTTPError(res.StatusCode, res.Status, string(body))
+	}
+
+	return nil
+}
+
+func CreateMonthlyPlaylistCover(month time.Month, year uint16, bearerToken string, env *env.Env) error {
+	// Build request
+	url := fmt.Sprintf("%s/api/playlist-cover", backendUrl)
+	requestBody := requests.CreatePlaylistImage{
+		Type:  "monthly",
+		Year:  year,
+		Month: models.ToMonth(month),
+	}
+	rawBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return err
+	}
+	req, err := retryablehttp.NewRequest(http.MethodPost, url, bytes.NewReader(rawBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Authorization", bearerToken)
+
+	// Send request
+	res, err := env.Http.Do(req)
+	if err != nil {
+		return err
+	}
+	if res.StatusCode > 299 {
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			env.Logger.Error("Failed to read response body", slog.Any("error", err))
+			return errors.Join(err, hathrHttp.NewHTTPError(res.StatusCode, res.Status, ""))
+		}
+		return hathrHttp.NewHTTPError(res.StatusCode, res.Status, string(body))
+	}
+
 	return nil
 }

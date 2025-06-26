@@ -805,6 +805,8 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 		}
 		endDate = startDate.AddDate(0, 0, 7)
 	}
+
+	// Get top tracks
 	env.Logger.DebugContext(ctx, "Getting top songs from DB")
 	tracks, err := env.Database.GetTopSpotifyTracks(ctx, database.GetTopSpotifyTracksParams{
 		Limit:  50,
@@ -2428,26 +2430,27 @@ func CreatePlaylistCover(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var httpError *hathrHttp.HTTPError
 	env.Logger.DebugContext(ctx, "Creating playlist image cover", slog.Int("year", int(body.Year)), slog.String("month", string(body.Month)), slog.Int("day", int(body.Day)), slog.String("type", string(body.Type)))
-	if body.Type == "weekly" {
+	if body.Type == "monthly" {
 		response, err = covers.CreateMonthlyImageCover(covers.CreateMonthlyImageCoverParams{
 			Month: models.Month(body.Month),
 			Year:  uint16(body.Year),
 		}, env)
-	} else if body.Type == "monthly" {
-		date1, err := loadDate(int(body.Year), time.Month(body.Month.Index()+1), int(body.Day), 0, 0, 0, 0)
+	} else {
+		var currWeek time.Time
+		currWeek, err = loadDate(int(body.Year), time.Month(body.Month.Index()+1), int(body.Day), 0, 0, 0, 0)
 		if err != nil {
 			env.Logger.ErrorContext(ctx, "Failed to load date", slog.Any("error", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		date2 := date1.AddDate(0, 0, 7)
+		nextWeek := currWeek.AddDate(0, 0, 7)
 		response, err = covers.CreateWeeklyImageCover(covers.CreateWeeklyImageCoverParams{
-			Day1:   uint8(date1.Day()),
-			Day2:   uint8(date2.Day()),
-			Year1:  uint16(date1.Year()),
-			Year2:  uint16(date2.Year()),
-			Month1: models.Month(date1.Month().String()),
-			Month2: models.Month(date2.Month().String()),
+			Day1:   uint8(currWeek.Day()),
+			Day2:   uint8(nextWeek.Day()),
+			Year1:  uint16(currWeek.Year()),
+			Year2:  uint16(nextWeek.Year()),
+			Month1: models.ToMonth(currWeek.Month()),
+			Month2: models.ToMonth(nextWeek.Month()),
 		}, env)
 	}
 

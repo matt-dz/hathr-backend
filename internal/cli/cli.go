@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"hathr-backend/internal/cli/aggregate"
+	"hathr-backend/internal/cli/cover"
 	"hathr-backend/internal/cli/generate"
 	"hathr-backend/internal/cli/release"
 	"hathr-backend/internal/env"
@@ -59,10 +60,24 @@ var aggregateCmd = &cobra.Command{
 	},
 }
 
+var coverCmd = &cobra.Command{
+	Use:   "generate-cover",
+	Short: "Generate playlist cover",
+	Run: func(cmd *cobra.Command, args []string) {
+		logger := logging.New()
+		httpclient := http.New()
+		httpclient.RetryMax = 5
+		httpclient.Logger = logger
+		env := env.New(logger, nil, httpclient)
+		cover.Run(cmd, args, env)
+	},
+}
+
 func init() {
 	generateCmd.Flags().String("playlist-type", "weekly", "playlist type to generate (weekly, monthly)")
 	releaseCmd.Flags().String("playlist-type", "weekly", "playlist type to generate (weekly, monthly)")
-	rootCmd.AddCommand(generateCmd, releaseCmd, aggregateCmd)
+	coverCmd.Flags().String("playlist-type", "weekly", "playlist type to generate (weekly, monthly)")
+	rootCmd.AddCommand(generateCmd, releaseCmd, aggregateCmd, coverCmd)
 }
 
 func Execute() {

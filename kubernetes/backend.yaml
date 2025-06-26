@@ -38,6 +38,12 @@ spec:
               value: "${SPOTIFY_CLIENT_SECRET}"
             - name: SPOTIFY_REDIRECT_URI
               value: "${SPOTIFY_REDIRECT_URI}"
+            - name: IMAGE_GENERATOR_URL
+              value: "${IMAGE_GENERATOR_URL}"
+            - name: IMAGE_GENERATOR_API_KEY
+              value: "${IMAGE_GENERATOR_API_KEY}"
+            - name: S3_URL
+              value: "${S3_URL}"
             - name: ORIGIN_URL
               value: "${ORIGIN_URL}"
             - name: JWKS_PATH

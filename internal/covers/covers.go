@@ -39,11 +39,15 @@ type CreateImageCoverResponse struct {
 }
 
 var generatorUrl = os.Getenv("IMAGE_GENERATOR_URL")
+var generatorApiKey = os.Getenv("IMAGE_GENERATOR_API_KEY")
 
 func CreateMonthlyImageCover(params CreateMonthlyImageCoverParams, env *env.Env) (CreateImageCoverResponse, error) {
 	var response CreateImageCoverResponse
 	if generatorUrl == "" {
 		return response, fmt.Errorf("Please set IMAGE_GENERATOR_URL environment variable")
+	}
+	if generatorApiKey == "" {
+		return response, fmt.Errorf("Please set IMAGE_GENERATOR_API_KEY environment variable")
 	}
 
 	// Create request
@@ -56,6 +60,7 @@ func CreateMonthlyImageCover(params CreateMonthlyImageCoverParams, env *env.Env)
 	if err != nil {
 		return response, err
 	}
+	req.Header.Add("X-API-Key", generatorApiKey)
 
 	// Send request
 	res, err := env.Http.Do(req)
@@ -87,6 +92,9 @@ func CreateWeeklyImageCover(params CreateWeeklyImageCoverParams, env *env.Env) (
 	if generatorUrl == "" {
 		return response, fmt.Errorf("Please set IMAGE_GENERATOR_URL environment variable")
 	}
+	if generatorApiKey == "" {
+		return response, fmt.Errorf("Please set IMAGE_GENERATOR_API_KEY environment variable")
+	}
 
 	// Create request
 	endpoint := fmt.Sprintf("%s/weekly-playlist", generatorUrl)
@@ -98,6 +106,7 @@ func CreateWeeklyImageCover(params CreateWeeklyImageCoverParams, env *env.Env) (
 	if err != nil {
 		return response, err
 	}
+	req.Header.Add("X-API-Key", generatorApiKey)
 
 	// Send request
 	res, err := env.Http.Do(req)
@@ -129,19 +138,18 @@ func MonthlyPlaylistCoverURL(month models.Month, year uint16) (string, error) {
 	if s3Url == "" {
 		return "", fmt.Errorf("Please set S3_URL environment variable")
 	}
-	return fmt.Sprintf("https://%s/%s/monthly/%d/%s", s3Url, playlistCoverBucket, year, string(month)), nil
+	return fmt.Sprintf("https://%s/%s/monthly/%d/%s.png", s3Url, playlistCoverBucket, year, string(month)), nil
 }
 
-func WeeklyPlaylistCoverURL(month models.Month, year uint16, day uint8) (string, error) {
+func WeeklyPlaylistCoverURL(startMonth models.Month, startYear uint16, startDay uint8) (string, error) {
 	s3Url := os.Getenv("S3_URL")
 	if s3Url == "" {
 		return "", fmt.Errorf("Please set S3_URL environment variable")
 	}
 
-	date1 := time.Date(int(year), time.Month(month.Index()+1), int(day), 0, 0, 0, 0, time.Local)
-	date2 := date1.AddDate(0, 0, 6)
-	month2 := strings.ToLower(date1.Month().String())
-	date1Str := fmt.Sprintf("%s_%d", month, day)
-	date2Str := fmt.Sprintf("%s_%d", month2, date2.Day())
-	return fmt.Sprintf("https://%s/%s/weekly/%d/%s/%s-%s", s3Url, playlistCoverBucket, date2.Year(), month2, date1Str, date2Str), nil
+	startDate := time.Date(int(startYear), time.Month(startMonth.Index()+1), int(startDay), 0, 0, 0, 0, time.Local)
+	endDate := startDate.AddDate(0, 0, 7)
+	startDateStr := fmt.Sprintf("%s_%d", startMonth, startDay)
+	endDateStr := fmt.Sprintf("%s_%d", endDate.Month(), endDate.Day())
+	return fmt.Sprintf("https://%s/%s/weekly/%d/%s/%s-%s.png", s3Url, playlistCoverBucket, endDate.Year(), strings.ToLower(endDate.Month().String()), startDateStr, endDateStr), nil
 }

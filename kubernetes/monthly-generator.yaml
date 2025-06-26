@@ -54,3 +54,32 @@ spec:
                   value: "${HATHR_PASSWORD}"
                 - name: HATHR_BACKEND_URL
                   value: "${HATHR_BACKEND_URL}"
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: monthly-playlist-cover-generator
+  namespace: hathr
+spec:
+  schedule: "0 19 1 * *" # Every 1st day of the month at 7 PM
+  concurrencyPolicy: Allow
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: monthly-playlist-generator
+              image: matthew10125/hathr-cli:latest
+              args:
+                - generate-cover
+                - --playlist-type=monthly
+              env:
+                - name: HATHR_USERNAME
+                  value: "${HATHR_USERNAME}"
+                - name: HATHR_PASSWORD
+                  value: "${HATHR_PASSWORD}"
+                - name: HATHR_BACKEND_URL
+                  value: "${HATHR_BACKEND_URL}"

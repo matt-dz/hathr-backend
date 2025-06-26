@@ -48,6 +48,10 @@ func GetMonth(m int) (Month, error) {
 	return months[m-1], nil
 }
 
+func ToMonth(m time.Month) Month {
+	return Month(strings.ToLower(m.String()))
+}
+
 type SpotifyPlaylistTrack struct {
 	ID       string   `json:"id"`
 	Name     string   `json:"name"`

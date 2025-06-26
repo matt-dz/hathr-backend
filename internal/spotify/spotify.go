@@ -177,7 +177,6 @@ func RefreshToken(refreshToken string, env *env.Env, ctx context.Context) (model
 	// Decode response
 	env.Logger.DebugContext(ctx, "Decoding request")
 	decoder := json.NewDecoder(res.Body)
-	decoder.DisallowUnknownFields()
 	if err := hathrJson.DecodeJson(&refreshTokenResponse, decoder); err != nil {
 		return refreshTokenResponse, err
 	}

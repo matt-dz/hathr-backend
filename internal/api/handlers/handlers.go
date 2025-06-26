@@ -197,7 +197,7 @@ func retrieveSpotifyToken(userID uuid.UUID, env *hathrEnv.Env, ctx context.Conte
 	}
 
 	// If token expires before 1 minute, refresh it
-	if tokens.TokenExpires.Time.Before(time.Now().Add(time.Minute)) {
+	if tokens.TokenExpires.Time.After(time.Now().Add(time.Minute)) {
 		return tokens.AccessToken, nil
 	}
 

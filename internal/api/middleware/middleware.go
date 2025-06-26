@@ -18,6 +18,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
+	"github.com/oklog/ulid/v2"
 )
 
 // Custom ResponseWriter that captures the status code
@@ -84,9 +85,16 @@ func LogRequest(next http.Handler) http.Handler {
 			environment = hathrEnv.Null()
 		}
 
+		// Add log id
+		id := ulid.MustNew(ulid.Timestamp(start), ulid.DefaultEntropy())
+		r = r.WithContext(logging.AppendCtx(r.Context(), slog.String("log_id", id.String())))
+
+		// Add request method and path
 		r = r.WithContext(logging.AppendCtx(r.Context(), slog.String("method", r.Method)))
 		r = r.WithContext(logging.AppendCtx(r.Context(), slog.String("path", r.URL.RequestURI())))
 		lrw := &logResponseWriter{w, http.StatusOK}
+
+		// Log request
 		environment.Logger.InfoContext(r.Context(), "Request received")
 		next.ServeHTTP(lrw, r)
 		environment.Logger.LogAttrs(

@@ -28,7 +28,6 @@ func (h ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 			r.AddAttrs(v)
 		}
 	}
-
 	return h.Handler.Handle(ctx, r)
 }
 
@@ -63,13 +62,13 @@ func New() *slog.Logger {
 			os.Stderr,
 			&slog.HandlerOptions{
 				Level: slog.LevelDebug,
-			})},
-	)
+			}),
+	})
 }
 
 func NullLogger() *ContextHandler {
 	return &ContextHandler{
-		slog.NewJSONHandler(
+		Handler: slog.NewJSONHandler(
 			nullWriter{},
 			&slog.HandlerOptions{},
 		),

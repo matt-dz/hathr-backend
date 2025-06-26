@@ -54,7 +54,7 @@ func Run(cmd *cobra.Command, _ []string, env *env.Env) {
 		for _, userID := range users.IDs {
 			go func() {
 				defer wg.Done()
-				if err := hathr.AggregatePlays(userID, currentTime, bearerToken, env); err != nil {
+				if err := hathr.AggregatePlays(userID, currentTime.Add(-time.Minute*30), bearerToken, env); err != nil {
 					env.Logger.Error("Failed to aggregate plays", slog.String("user_id", userID.String()), slog.Any("error", err))
 				}
 			}()

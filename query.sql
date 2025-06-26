@@ -310,8 +310,7 @@ SET
   refresh_token = $2,
   scope = $3,
   token_expires = $4
-FROM users u
-WHERE u.id = $5;
+WHERE user_id = (SELECT spotify_user_id FROM users WHERE id = $5);
 
 -- name: CreateSpotifyPlay :exec
 INSERT INTO spotify_plays (user_id, track_id, played_at)
@@ -323,13 +322,11 @@ SELECT
     p.track_id,
     COUNT (*) AS plays
 FROM spotify_plays p
-JOIN spotify_tracks t ON p.track_id = t.id
 WHERE
     p.user_id = @user_id::UUID
     AND p.played_at >= @start_time::TIMESTAMPTZ
     AND p.played_at < @end_time::TIMESTAMPTZ
-GROUP BY
-    p.track_id, t.name, t.artists, t.image_url
+GROUP BY p.track_id
 ORDER BY plays DESC
 LIMIT $1;
 
@@ -385,10 +382,10 @@ ON CONFLICT DO NOTHING;
 
 -- name: CreateSpotifyPlays :exec
 INSERT INTO spotify_plays (user_id, track_id, played_at)
-SELECT @user_id::UUID, ids, played
-FROM
-    unnest(@ids::TEXT[]) AS ids,
-    unnest(@played::TIMESTAMPTZ[]) AS played
+SELECT @user_id::UUID, u.ids, p.played
+FROM  unnest(@ids::TEXT[]) WITH ORDINALITY AS u(ids, idx)
+    JOIN unnest(@played::TIMESTAMPTZ[]) WITH ORDINALITY AS p(played, idx)
+    USING (idx)
 ON CONFLICT DO NOTHING;
 
 -- name: ListRegisteredUsers :many

@@ -192,10 +192,10 @@ func (q *Queries) CreateSpotifyPlay(ctx context.Context, arg CreateSpotifyPlayPa
 
 const createSpotifyPlays = `-- name: CreateSpotifyPlays :exec
 INSERT INTO spotify_plays (user_id, track_id, played_at)
-SELECT $1::UUID, ids, played
-FROM
-    unnest($2::TEXT[]) AS ids,
-    unnest($3::TIMESTAMPTZ[]) AS played
+SELECT $1::UUID, u.ids, p.played
+FROM  unnest($2::TEXT[]) WITH ORDINALITY AS u(ids, idx)
+    JOIN unnest($3::TIMESTAMPTZ[]) WITH ORDINALITY AS p(played, idx)
+    USING (idx)
 ON CONFLICT DO NOTHING
 `
 
@@ -688,13 +688,11 @@ SELECT
     p.track_id,
     COUNT (*) AS plays
 FROM spotify_plays p
-JOIN spotify_tracks t ON p.track_id = t.id
 WHERE
     p.user_id = $2::UUID
     AND p.played_at >= $3::TIMESTAMPTZ
     AND p.played_at < $4::TIMESTAMPTZ
-GROUP BY
-    p.track_id, t.name, t.artists, t.image_url
+GROUP BY p.track_id
 ORDER BY plays DESC
 LIMIT $1
 `
@@ -1387,8 +1385,7 @@ SET
   refresh_token = $2,
   scope = $3,
   token_expires = $4
-FROM users u
-WHERE u.id = $5
+WHERE user_id = (SELECT spotify_user_id FROM users WHERE id = $5)
 `
 
 type UpdateSpotifyTokensParams struct {

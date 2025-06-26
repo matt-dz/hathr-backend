@@ -2205,12 +2205,18 @@ func UpdateSpotifyPlays(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// early exit if no tracks are found
+	if len(recentTracks.Items) == 0 {
+		env.Logger.DebugContext(ctx, "No recent tracks found, nothing to update")
+		return
+	}
+
 	// Create tracks
 	tracks := make([]spotifyModels.SpotifyTrackInput, len(recentTracks.Items))
 	ids := make([]string, len(recentTracks.Items))
 	played := make([]pgtype.Timestamptz, len(recentTracks.Items))
 
-	env.Logger.DebugContext(ctx, "Processing tracks")
+	env.Logger.DebugContext(ctx, "Processing tracks", slog.Int("num_tracks", len(recentTracks.Items)))
 	for i, playHistory := range recentTracks.Items {
 		ids[i] = playHistory.Track.ID
 		played[i] = pgtype.Timestamptz{

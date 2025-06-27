@@ -317,7 +317,7 @@ SET
   refresh_token = $2,
   scope = $3,
   token_expires = $4
-WHERE user_id = (SELECT spotify_user_id FROM users WHERE id = $5);
+WHERE user_id = (SELECT spotify_id FROM users WHERE id = $5);
 
 -- name: CreateSpotifyPlay :exec
 INSERT INTO spotify_plays (user_id, track_id, played_at)
@@ -344,7 +344,7 @@ SELECT
     t.token_expires
 FROM spotify_tokens t
 JOIN users u
-    ON u.spotify_user_id = t.user_id
+    ON u.spotify_id = t.user_id
 WHERE u.id = $1
 FOR UPDATE OF t;
 

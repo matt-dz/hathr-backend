@@ -68,7 +68,11 @@ WITH friends AS (
     AND (f.user_a_id = $1 OR f.user_b_id = $1)
 )
 SELECT
-    u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
+    u.id,
+    u.image_url,
+    u.spotify_url,
+    u.username,
+    u.display_name,
     p.id AS playlist_id,
     p.type AS playlist_type,
     p.name AS playlist_name,
@@ -114,9 +118,17 @@ type PlaylistWithoutTracks struct {
 	ImageURL   *string             `json:"image_url"`
 }
 
+type GetFriendsPlaylistUser struct {
+	ID          uuid.UUID `json:"id"`
+	ImageURL    *string   `json:"image_url"`
+	SpotifyURL  *string   `json:"spotify_url"`
+	Username    *string   `json:"username"`
+	DisplayName *string   `json:"display_name"`
+}
+
 type GetFriendPlaylistsRow struct {
-	User     User                  `json:"user"`
-	Playlist PlaylistWithoutTracks `json:"playlist"`
+	User     GetFriendsPlaylistUser `json:"user"`
+	Playlist PlaylistWithoutTracks  `json:"playlist"`
 }
 
 func (q *Queries) GetFriendPlaylists(ctx context.Context, userAID uuid.UUID) ([]GetFriendPlaylistsRow, error) {
@@ -130,18 +142,10 @@ func (q *Queries) GetFriendPlaylists(ctx context.Context, userAID uuid.UUID) ([]
 		var i GetFriendPlaylistsRow
 		if err := rows.Scan(
 			&i.User.ID,
-			&i.User.DisplayName,
+			&i.User.ImageURL,
+			&i.User.SpotifyURL,
 			&i.User.Username,
-			&i.User.ImageUrl,
-			&i.User.Email,
-			&i.User.RegisteredAt,
-			&i.User.Role,
-			&i.User.Password,
-			&i.User.SpotifyUserID,
-			&i.User.SpotifyUserData,
-			&i.User.CreatedAt,
-			&i.User.RefreshToken,
-			&i.User.RefreshExpiresAt,
+			&i.User.DisplayName,
 			&i.Playlist.ID,
 			&i.Playlist.Type,
 			&i.Playlist.Name,

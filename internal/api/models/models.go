@@ -89,22 +89,20 @@ type PlaylistWithoutTracks struct {
 }
 
 type PublicUser struct {
-	ID              uuid.UUID                 `json:"id"`
-	Username        string                    `json:"username"`
-	DisplayName     string                    `json:"display_name"`
-	CreatedAt       time.Time                 `json:"created_at"`
-	ImageURL        *string                   `json:"image_url"`
-	SpotifyUserData *spotifyModels.PublicUser `json:"spotify_user_data"`
+	ID          uuid.UUID `json:"id"`
+	ImageURL    *string   `json:"image_url"`
+	SpotifyURL  *string   `json:"spotify_url"`
+	Username    *string   `json:"username"`
+	DisplayName *string   `json:"display_name"`
 }
 
 type UserProfile struct {
-	ID              uuid.UUID                 `json:"id"`
-	Username        string                    `json:"username"`
-	DisplayName     string                    `json:"display_name"`
-	Email           string                    `json:"email"`
-	CreatedAt       time.Time                 `json:"created_at"`
-	ImageURL        *string                   `json:"image_url"`
-	SpotifyUserData *spotifyModels.PublicUser `json:"spotify_user_data"`
+	ID          uuid.UUID `json:"id"`
+	Username    string    `json:"username"`
+	DisplayName string    `json:"display_name"`
+	Email       string    `json:"email"`
+	CreatedAt   time.Time `json:"created_at"`
+	ImageURL    *string   `json:"image_url"`
 }
 
 type UserAndPlaylistWithoutTracks struct {

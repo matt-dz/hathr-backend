@@ -4,7 +4,9 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,62 +65,37 @@ func buildSpotifyPublicUser(spotifyUserData spotifyModels.User) spotifyModels.Pu
 	}
 }
 
-func buildPublicUser(user database.User) (models.PublicUser, error) {
-	var response models.PublicUser
-	var spotifyUserData spotifyModels.User
-	if err := json.Unmarshal(user.SpotifyUserData, &spotifyUserData); err != nil {
-		return response, err
-	}
-
-	spotifyData := buildSpotifyPublicUser(spotifyUserData)
-	response = models.PublicUser{
-		ID:              user.ID,
-		CreatedAt:       user.CreatedAt.Time,
-		Username:        user.Username.String,
-		ImageURL:        nil,
-		DisplayName:     user.DisplayName.String,
-		SpotifyUserData: &spotifyData,
+func buildUserProfile(user database.User) models.UserProfile {
+	response := models.UserProfile{
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt.Time,
+		Username:    user.Username.String,
+		Email:       user.Email,
+		ImageURL:    nil,
+		DisplayName: user.DisplayName.String,
 	}
 	if user.ImageUrl.Valid {
 		response.ImageURL = &user.ImageUrl.String
 	}
-	return response, nil
+	return response
 }
 
-func buildUserProfile(user database.User) (models.UserProfile, error) {
-	var response models.UserProfile
-	var spotifyUserData spotifyModels.User
-	if err := json.Unmarshal(user.SpotifyUserData, &spotifyUserData); err != nil {
-		return response, err
+func buildPublicUser(user database.User) models.PublicUser {
+	return models.PublicUser{
+		ID:          user.ID,
+		DisplayName: &user.DisplayName.String,
+		SpotifyURL:  &user.SpotifyUrl.String,
+		Username:    &user.Username.String,
+		ImageURL:    &user.ImageUrl.String,
 	}
-
-	spotifyData := buildSpotifyPublicUser(spotifyUserData)
-	response = models.UserProfile{
-		ID:              user.ID,
-		CreatedAt:       user.CreatedAt.Time,
-		Username:        user.Username.String,
-		Email:           user.Email,
-		ImageURL:        nil,
-		DisplayName:     user.DisplayName.String,
-		SpotifyUserData: &spotifyData,
-	}
-	if user.ImageUrl.Valid {
-		response.ImageURL = &user.ImageUrl.String
-	}
-	return response, nil
 }
 
 func copyOutgoingRequeststoFriendRequest(row []database.ListOutgoingRequestsRow) ([]models.FriendRequest, error) {
 	response := make([]models.FriendRequest, len(row))
 	for i, v := range row {
-		user, err := buildPublicUser(v.User)
-		if err != nil {
-			return response, err
-		}
-
 		response[i] = models.FriendRequest{
 			Friendship: v.Friendship,
-			User:       user,
+			User:       buildPublicUser(v.User),
 		}
 	}
 	return response, nil
@@ -127,14 +104,9 @@ func copyOutgoingRequeststoFriendRequest(row []database.ListOutgoingRequestsRow)
 func copyIncomingRequeststoFriendRequest(row []database.ListIncomingRequestsRow) ([]models.FriendRequest, error) {
 	response := make([]models.FriendRequest, len(row))
 	for i, v := range row {
-		user, err := buildPublicUser(v.User)
-		if err != nil {
-			return response, err
-		}
-
 		response[i] = models.FriendRequest{
 			Friendship: v.Friendship,
-			User:       user,
+			User:       buildPublicUser(v.User),
 		}
 	}
 	return response, nil
@@ -143,14 +115,9 @@ func copyIncomingRequeststoFriendRequest(row []database.ListIncomingRequestsRow)
 func copyRequeststoFriendRequest(row []database.ListRequestsRow) ([]models.FriendRequest, error) {
 	response := make([]models.FriendRequest, len(row))
 	for i, v := range row {
-		user, err := buildPublicUser(v.User)
-		if err != nil {
-			return response, err
-		}
-
 		response[i] = models.FriendRequest{
 			Friendship: v.Friendship,
-			User:       user,
+			User:       buildPublicUser(v.User),
 		}
 	}
 	return response, nil
@@ -267,6 +234,15 @@ func validateDisplayName(displayName string) error {
 		return fmt.Errorf("Display name may not include newlines.")
 	}
 	return nil
+}
+
+func generateRefreshToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+
+	return base64.RawURLEncoding.EncodeToString(bytes), nil
 }
 
 func ServeSpotifyOAuthMetadata(w http.ResponseWriter, r *http.Request) {
@@ -438,24 +414,54 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Insert user into DB
+	// Generate refresh token
+	refreshToken, err := generateRefreshToken()
+	if err != nil {
+		env.Logger.ErrorContext(ctx, "Failed to generate refresh token", slog.Any("error", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// Marshal user data
 	env.Logger.DebugContext(ctx, "Marshaling user data")
-	marshaledUser, err := json.Marshal(spotifyUser)
+	rawSpotifyData, err := json.Marshal(spotifyUser)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to marshal user data", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	env.Logger.DebugContext(ctx, "Inserting user into database")
-	dbUser, err := env.Database.CreateSpotifyUser(ctx, database.CreateSpotifyUserParams{
-		SpotifyUserID: pgtype.Text{
+	// Extract largest image URL
+	imageURL := extractLargestImage(spotifyUser.Images)
+
+	// Insert user into database
+	params := database.CreateSpotifyUserParams{
+		Email:        spotifyUser.Email,
+		SpotifyData:  rawSpotifyData,
+		RefreshToken: refreshToken,
+		SpotifyID: pgtype.Text{
 			String: spotifyUser.ID,
 			Valid:  true,
 		},
-		Email:           spotifyUser.Email,
-		SpotifyUserData: marshaledUser,
-	})
+		SpotifyUrl: pgtype.Text{
+			String: spotifyUser.ExternalURLs.Spotify,
+			Valid:  true,
+		},
+		ImageUrl: pgtype.Text{
+			String: imageURL,
+			Valid:  imageURL != "",
+		},
+		SpotifyDisplayName: pgtype.Text{
+			String: "",
+			Valid:  false,
+		},
+	}
+	if spotifyUser.DisplayName != nil {
+		params.SpotifyDisplayName.String = *spotifyUser.DisplayName
+		params.SpotifyDisplayName.Valid = true
+	}
+	env.Logger.DebugContext(ctx, "Inserting user into database")
+	hathrUser, err := env.Database.CreateSpotifyUser(ctx, params)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to insert user", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -481,29 +487,6 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update user imageURL
-	imageURL := extractLargestImage(spotifyUser.Images)
-	if imageURL != "" {
-		env.Logger.DebugContext(ctx, "Updating user image")
-		rows, err := env.Database.UpdateUserImage(ctx, database.UpdateUserImageParams{
-			ID: dbUser.ID,
-			ImageUrl: pgtype.Text{
-				String: imageURL,
-				Valid:  true,
-			},
-		})
-		if err != nil {
-			env.Logger.ErrorContext(ctx, "Unable to update user image", slog.Any("error", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		} else if rows == 0 {
-			// sanity check - this shouldn't be possible
-			env.Logger.ErrorContext(ctx, "No rows updated when updating user image", slog.Any("error", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-	}
-
 	// Retrieve private key for JWT signing
 	env.Logger.DebugContext(ctx, "Retrieving private key")
 	key, err := env.Database.GetLatestPrivateKey(ctx)
@@ -515,7 +498,7 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT for user
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	signedJWT, err := buildJWT(dbUser.ID, dbUser.Role, dbUser.RegisteredAt.Valid, key.Value)
+	signedJWT, err := buildJWT(hathrUser.ID, hathrUser.Role, hathrUser.RegisteredAt.Valid, key.Value)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -526,7 +509,7 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Add("Authorization", fmt.Sprintf("Bearer %s", signedJWT))
 	err = json.NewEncoder(w).Encode(responses.LoginUser{
-		RefreshToken: dbUser.RefreshToken,
+		RefreshToken: hathrUser.RefreshToken,
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))
@@ -622,7 +605,7 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 	// Unmarshal spotify data
 	env.Logger.DebugContext(ctx, "Unmarshaling spotify data")
 	var spotifyUser spotifyModels.User
-	err = json.Unmarshal(dbUser.SpotifyUserData, &spotifyUser)
+	err = json.Unmarshal(dbUser.SpotifyData, &spotifyUser)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify data", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -717,7 +700,7 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 	// Unmarshal spotify data
 	env.Logger.DebugContext(ctx, "Unmarshaling spotify data")
 	var spotifyUserData spotifyModels.User
-	err = json.Unmarshal(user.SpotifyUserData, &spotifyUserData)
+	err = json.Unmarshal(user.SpotifyData, &spotifyUserData)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify data", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -1064,21 +1047,12 @@ func GetPlaylist(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Unmarshal spotify user data
-	env.Logger.DebugContext(ctx, "Unmarshaling spotify user data")
-	user, err := buildPublicUser(dbPlaylist.User)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Error building user", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
 	// Encoding response
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Add("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(responses.GetPlaylist{
 		Playlist: playlist,
-		User:     user,
+		User:     buildPublicUser(dbPlaylist.User),
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to encode response", slog.Any("error", err))
@@ -1636,16 +1610,8 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 	users := make([]responses.UserWithFriendship, len(dbUsers))
 	for i, dbUser := range dbUsers {
-		// Unmarshal spotify data
-		user, err := buildPublicUser(dbUser.User)
-		if err != nil {
-			env.Logger.ErrorContext(ctx, "Unable to build user", slog.Any("error", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
 		users[i] = responses.UserWithFriendship{
-			User:       user,
+			User:       buildPublicUser(dbUser.User),
 			Friendship: nil,
 		}
 		if dbUser.Status.Valid {
@@ -1720,18 +1686,10 @@ func GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// build user
-	user, err := buildUserProfile(dbUser)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to build user profile", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
 	// Encode response
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Set("Content-Type", "application/json")
-	if err = json.NewEncoder(w).Encode(user); err != nil {
+	if err = json.NewEncoder(w).Encode(buildPublicUser(dbUser)); err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode user response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -1787,19 +1745,10 @@ func GetUserByUsername(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build public user
-	env.Logger.DebugContext(ctx, "Building public user")
-	user, err := buildPublicUser(dbUser)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Unable to build user", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
 	// Encode response
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(user)
+	err = json.NewEncoder(w).Encode(buildPublicUser(dbUser))
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode user response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -1918,13 +1867,7 @@ func GetUserFriends(w http.ResponseWriter, r *http.Request) {
 	env.Logger.DebugContext(ctx, "Processing friends data")
 	responseFriends := make([]models.PublicUser, len(friends))
 	for i, f := range friends {
-		user, err := buildPublicUser(f)
-		if err != nil {
-			env.Logger.ErrorContext(ctx, "Unable to unmarshal spotify user data", slog.Any("error", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-		responseFriends[i] = user
+		responseFriends[i] = buildPublicUser(f)
 	}
 
 	// Encode response
@@ -1988,14 +1931,14 @@ func GetFriendsPlaylists(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		user, err := buildPublicUser(row.User)
-		if err != nil {
-			env.Logger.ErrorContext(ctx, "Unable to build user", slog.Any("error", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
 		response = append(response, models.UserAndPlaylistWithoutTracks{
-			User: user,
+			User: models.PublicUser{
+				ID:          row.User.ID,
+				Username:    row.User.Username,
+				DisplayName: row.User.DisplayName,
+				SpotifyURL:  row.User.SpotifyURL,
+				ImageURL:    row.User.ImageURL,
+			},
 			Playlist: models.PlaylistWithoutTracks{
 				Day:        *row.Playlist.Day,
 				Year:       *row.Playlist.Year,
@@ -2128,19 +2071,10 @@ func UpdatePersonalProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build response
-	env.Logger.DebugContext(ctx, "Building response")
-	user, err := buildUserProfile(res)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Unable to build user", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
 	// Encode response
 	env.Logger.DebugContext(ctx, "Encoding response")
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(user); err != nil {
+	if err := json.NewEncoder(w).Encode(buildUserProfile(res)); err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode user response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

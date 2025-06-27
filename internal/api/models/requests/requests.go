@@ -29,7 +29,7 @@ type GetUserPlaylists struct {
 }
 
 type RefreshSession struct {
-	RefreshToken uuid.UUID `json:"refresh_token" validate:"required"`
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
 type UpdateVisibility struct {

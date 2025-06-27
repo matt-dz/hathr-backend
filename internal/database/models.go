@@ -243,17 +243,19 @@ type SpotifyTrack struct {
 }
 
 type User struct {
-	ID               uuid.UUID          `json:"id"`
-	DisplayName      pgtype.Text        `json:"display_name"`
-	Username         pgtype.Text        `json:"username"`
-	ImageUrl         pgtype.Text        `json:"image_url"`
-	Email            string             `json:"email"`
-	RegisteredAt     pgtype.Timestamptz `json:"registered_at"`
-	Role             Role               `json:"role"`
-	Password         pgtype.Text        `json:"password"`
-	SpotifyUserID    pgtype.Text        `json:"spotify_user_id"`
-	SpotifyUserData  []byte             `json:"spotify_user_data"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	RefreshToken     uuid.UUID          `json:"refresh_token"`
-	RefreshExpiresAt pgtype.Timestamptz `json:"refresh_expires_at"`
+	ID                 uuid.UUID          `json:"id"`
+	DisplayName        pgtype.Text        `json:"display_name"`
+	Username           pgtype.Text        `json:"username"`
+	Email              string             `json:"email"`
+	ImageUrl           pgtype.Text        `json:"image_url"`
+	SpotifyID          pgtype.Text        `json:"spotify_id"`
+	SpotifyDisplayName pgtype.Text        `json:"spotify_display_name"`
+	SpotifyUrl         pgtype.Text        `json:"spotify_url"`
+	SpotifyData        []byte             `json:"spotify_data"`
+	RegisteredAt       pgtype.Timestamptz `json:"registered_at"`
+	Role               Role               `json:"role"`
+	Password           pgtype.Text        `json:"password"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	RefreshToken       string             `json:"refresh_token"`
+	RefreshExpiresAt   pgtype.Timestamptz `json:"refresh_expires_at"`
 }

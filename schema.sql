@@ -14,19 +14,26 @@ CREATE TABLE private_keys (
 
 CREATE TABLE users (
     id UUID DEFAULT gen_random_uuid (),
+
+
+    -- Hathr Data
     display_name TEXT,
     username TEXT UNIQUE,
-    image_url TEXT,
     email TEXT NOT NULL,
+    image_url TEXT,
+
+    -- Spotify Data
+    spotify_id TEXT UNIQUE,
+    spotify_display_name TEXT,
+    spotify_url TEXT,
+    spotify_data JSONB,
+
     registered_at TIMESTAMPTZ,
     role role NOT NULL DEFAULT 'user',
     password TEXT,
 
-    spotify_user_id TEXT UNIQUE,
-    spotify_user_data JSONB,
-
     created_at TIMESTAMPTZ NOT NULL DEFAULT now (),
-    refresh_token UUID NOT NULL DEFAULT gen_random_uuid (),
+    refresh_token TEXT NOT NULL,
     refresh_expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '1 year'),
 
     CONSTRAINT valid_admin CHECK (
@@ -34,8 +41,8 @@ CREATE TABLE users (
         OR (role = 'user')
     ),
     CONSTRAINT valid_spotify_user CHECK (
-        (spotify_user_id IS NOT NULL AND spotify_user_data IS NOT NULL)
-        OR (spotify_user_id IS NULL AND spotify_user_data IS NULL)
+        (spotify_id IS NOT NULL AND spotify_display_name IS NOT NULL AND spotify_url IS NOT NULL AND spotify_data IS NOT NULL)
+        OR (spotify_id IS NULL AND spotify_display_name IS NULL AND spotify_url IS NULL AND spotify_data IS NULL)
     ),
 
     PRIMARY KEY (id)
@@ -150,7 +157,7 @@ CREATE TABLE spotify_tokens (
     token_expires TIMESTAMPTZ NOT NULL,
 
     PRIMARY KEY(user_id),
-    FOREIGN KEY (user_id) REFERENCES users (spotify_user_id)
+    FOREIGN KEY (user_id) REFERENCES users (spotify_id)
         ON DELETE CASCADE
 );
 

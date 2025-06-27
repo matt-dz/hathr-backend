@@ -10,7 +10,7 @@ import (
 )
 
 type LoginUser struct {
-	RefreshToken uuid.UUID `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 type UpsertUser struct {

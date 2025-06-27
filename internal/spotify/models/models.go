@@ -41,7 +41,7 @@ type Image struct {
 
 type User struct {
 	Country      string       `json:"country"`
-	DisplayName  string       `json:"display_name"`
+	DisplayName  *string      `json:"display_name"`
 	Email        string       `json:"email"`
 	ExternalURLs ExternalURLs `json:"external_urls"`
 	Followers    Followers    `json:"followers"`
@@ -54,7 +54,7 @@ type User struct {
 }
 
 type PublicUser struct {
-	DisplayName  string       `json:"display_name"`
+	DisplayName  *string      `json:"display_name"`
 	ExternalURLs ExternalURLs `json:"external_urls"`
 	ID           string       `json:"id"`
 	Images       []Image      `json:"images"`

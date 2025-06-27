@@ -239,33 +239,52 @@ func (q *Queries) CreateSpotifyTracks(ctx context.Context, tracks []models.Spoti
 }
 
 const createSpotifyUser = `-- name: CreateSpotifyUser :one
-INSERT INTO users (spotify_user_id, email, spotify_user_data)
-VALUES ($1, $2, $3)
-ON CONFLICT (spotify_user_id) DO UPDATE
-SET email = users.email -- no op
-RETURNING id, display_name, username, image_url, email, registered_at, role, password, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
+INSERT INTO users (email, spotify_id, spotify_display_name, spotify_url, spotify_data, refresh_token, image_url)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (spotify_id) DO UPDATE
+    SET
+        email = EXCLUDED.email,
+        spotify_display_name = EXCLUDED.spotify_display_name,
+        spotify_url = EXCLUDED.spotify_url,
+        spotify_data = EXCLUDED.spotify_data,
+        image_url = EXCLUDED.image_url
+RETURNING id, display_name, username, email, image_url, spotify_id, spotify_display_name, spotify_url, spotify_data, registered_at, role, password, created_at, refresh_token, refresh_expires_at
 `
 
 type CreateSpotifyUserParams struct {
-	SpotifyUserID   pgtype.Text `json:"spotify_user_id"`
-	Email           string      `json:"email"`
-	SpotifyUserData []byte      `json:"spotify_user_data"`
+	Email              string      `json:"email"`
+	SpotifyID          pgtype.Text `json:"spotify_id"`
+	SpotifyDisplayName pgtype.Text `json:"spotify_display_name"`
+	SpotifyUrl         pgtype.Text `json:"spotify_url"`
+	SpotifyData        []byte      `json:"spotify_data"`
+	RefreshToken       string      `json:"refresh_token"`
+	ImageUrl           pgtype.Text `json:"image_url"`
 }
 
 func (q *Queries) CreateSpotifyUser(ctx context.Context, arg CreateSpotifyUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createSpotifyUser, arg.SpotifyUserID, arg.Email, arg.SpotifyUserData)
+	row := q.db.QueryRow(ctx, createSpotifyUser,
+		arg.Email,
+		arg.SpotifyID,
+		arg.SpotifyDisplayName,
+		arg.SpotifyUrl,
+		arg.SpotifyData,
+		arg.RefreshToken,
+		arg.ImageUrl,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
-		&i.ImageUrl,
 		&i.Email,
+		&i.ImageUrl,
+		&i.SpotifyID,
+		&i.SpotifyDisplayName,
+		&i.SpotifyUrl,
+		&i.SpotifyData,
 		&i.RegisteredAt,
 		&i.Role,
 		&i.Password,
-		&i.SpotifyUserID,
-		&i.SpotifyUserData,
 		&i.CreatedAt,
 		&i.RefreshToken,
 		&i.RefreshExpiresAt,
@@ -344,7 +363,7 @@ type GetAdminUserRow struct {
 	ID           uuid.UUID          `json:"id"`
 	Role         Role               `json:"role"`
 	RegisteredAt pgtype.Timestamptz `json:"registered_at"`
-	RefreshToken uuid.UUID          `json:"refresh_token"`
+	RefreshToken string             `json:"refresh_token"`
 	Password     pgtype.Text        `json:"password"`
 }
 
@@ -469,7 +488,7 @@ func (q *Queries) GetPersonalPlaylists(ctx context.Context, userID uuid.UUID) ([
 }
 
 const getPersonalProfile = `-- name: GetPersonalProfile :one
-SELECT id, display_name, username, image_url, email, registered_at, role, password, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE id = $1
+SELECT id, display_name, username, email, image_url, spotify_id, spotify_display_name, spotify_url, spotify_data, registered_at, role, password, created_at, refresh_token, refresh_expires_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetPersonalProfile(ctx context.Context, id uuid.UUID) (User, error) {
@@ -479,13 +498,15 @@ func (q *Queries) GetPersonalProfile(ctx context.Context, id uuid.UUID) (User, e
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
-		&i.ImageUrl,
 		&i.Email,
+		&i.ImageUrl,
+		&i.SpotifyID,
+		&i.SpotifyDisplayName,
+		&i.SpotifyUrl,
+		&i.SpotifyData,
 		&i.RegisteredAt,
 		&i.Role,
 		&i.Password,
-		&i.SpotifyUserID,
-		&i.SpotifyUserData,
 		&i.CreatedAt,
 		&i.RefreshToken,
 		&i.RefreshExpiresAt,
@@ -609,7 +630,7 @@ func (q *Queries) GetSpotifyPlaylistTracks(ctx context.Context, playlistID uuid.
 const getSpotifyPlaylistWithOwner = `-- name: GetSpotifyPlaylistWithOwner :one
 SELECT
     p.id, p.user_id, p.type, p.name, p.created_at, p.visibility, p.image_url, p.year, p.month, p.day,
-    u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+    u.id, u.display_name, u.username, u.email, u.image_url, u.spotify_id, u.spotify_display_name, u.spotify_url, u.spotify_data, u.registered_at, u.role, u.password, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM playlists p
 JOIN users u
   ON u.id = p.user_id
@@ -638,13 +659,15 @@ func (q *Queries) GetSpotifyPlaylistWithOwner(ctx context.Context, id uuid.UUID)
 		&i.User.ID,
 		&i.User.DisplayName,
 		&i.User.Username,
-		&i.User.ImageUrl,
 		&i.User.Email,
+		&i.User.ImageUrl,
+		&i.User.SpotifyID,
+		&i.User.SpotifyDisplayName,
+		&i.User.SpotifyUrl,
+		&i.User.SpotifyData,
 		&i.User.RegisteredAt,
 		&i.User.Role,
 		&i.User.Password,
-		&i.User.SpotifyUserID,
-		&i.User.SpotifyUserData,
 		&i.User.CreatedAt,
 		&i.User.RefreshToken,
 		&i.User.RefreshExpiresAt,
@@ -678,14 +701,14 @@ func (q *Queries) GetSpotifyTokens(ctx context.Context, id uuid.UUID) (GetSpotif
 }
 
 const getSpotifyUserID = `-- name: GetSpotifyUserID :one
-SELECT spotify_user_id FROM users WHERE id = $1
+SELECT spotify_id FROM users WHERE id = $1
 `
 
 func (q *Queries) GetSpotifyUserID(ctx context.Context, id uuid.UUID) (pgtype.Text, error) {
 	row := q.db.QueryRow(ctx, getSpotifyUserID, id)
-	var spotify_user_id pgtype.Text
-	err := row.Scan(&spotify_user_id)
-	return spotify_user_id, err
+	var spotify_id pgtype.Text
+	err := row.Scan(&spotify_id)
+	return spotify_id, err
 }
 
 const getTopSpotifyTracks = `-- name: GetTopSpotifyTracks :many
@@ -740,23 +763,25 @@ func (q *Queries) GetTopSpotifyTracks(ctx context.Context, arg GetTopSpotifyTrac
 }
 
 const getUserBySpotifyId = `-- name: GetUserBySpotifyId :one
-SELECT id, display_name, username, image_url, email, registered_at, role, password, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE spotify_user_id = $1
+SELECT id, display_name, username, email, image_url, spotify_id, spotify_display_name, spotify_url, spotify_data, registered_at, role, password, created_at, refresh_token, refresh_expires_at FROM users WHERE spotify_id = $1
 `
 
-func (q *Queries) GetUserBySpotifyId(ctx context.Context, spotifyUserID pgtype.Text) (User, error) {
-	row := q.db.QueryRow(ctx, getUserBySpotifyId, spotifyUserID)
+func (q *Queries) GetUserBySpotifyId(ctx context.Context, spotifyID pgtype.Text) (User, error) {
+	row := q.db.QueryRow(ctx, getUserBySpotifyId, spotifyID)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
-		&i.ImageUrl,
 		&i.Email,
+		&i.ImageUrl,
+		&i.SpotifyID,
+		&i.SpotifyDisplayName,
+		&i.SpotifyUrl,
+		&i.SpotifyData,
 		&i.RegisteredAt,
 		&i.Role,
 		&i.Password,
-		&i.SpotifyUserID,
-		&i.SpotifyUserData,
 		&i.CreatedAt,
 		&i.RefreshToken,
 		&i.RefreshExpiresAt,
@@ -765,7 +790,7 @@ func (q *Queries) GetUserBySpotifyId(ctx context.Context, spotifyUserID pgtype.T
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+SELECT u.id, u.display_name, u.username, u.email, u.image_url, u.spotify_id, u.spotify_display_name, u.spotify_url, u.spotify_data, u.registered_at, u.role, u.password, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM users u
 LEFT JOIN friendships f
     ON (
@@ -787,13 +812,15 @@ func (q *Queries) GetUserByUsername(ctx context.Context, arg GetUserByUsernamePa
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
-		&i.ImageUrl,
 		&i.Email,
+		&i.ImageUrl,
+		&i.SpotifyID,
+		&i.SpotifyDisplayName,
+		&i.SpotifyUrl,
+		&i.SpotifyData,
 		&i.RegisteredAt,
 		&i.Role,
 		&i.Password,
-		&i.SpotifyUserID,
-		&i.SpotifyUserData,
 		&i.CreatedAt,
 		&i.RefreshToken,
 		&i.RefreshExpiresAt,
@@ -802,23 +829,25 @@ func (q *Queries) GetUserByUsername(ctx context.Context, arg GetUserByUsernamePa
 }
 
 const getUserFromSession = `-- name: GetUserFromSession :one
-SELECT id, display_name, username, image_url, email, registered_at, role, password, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at FROM users WHERE refresh_token = $1
+SELECT id, display_name, username, email, image_url, spotify_id, spotify_display_name, spotify_url, spotify_data, registered_at, role, password, created_at, refresh_token, refresh_expires_at FROM users WHERE refresh_token = $1
 `
 
-func (q *Queries) GetUserFromSession(ctx context.Context, refreshToken uuid.UUID) (User, error) {
+func (q *Queries) GetUserFromSession(ctx context.Context, refreshToken string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserFromSession, refreshToken)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
-		&i.ImageUrl,
 		&i.Email,
+		&i.ImageUrl,
+		&i.SpotifyID,
+		&i.SpotifyDisplayName,
+		&i.SpotifyUrl,
+		&i.SpotifyData,
 		&i.RegisteredAt,
 		&i.Role,
 		&i.Password,
-		&i.SpotifyUserID,
-		&i.SpotifyUserData,
 		&i.CreatedAt,
 		&i.RefreshToken,
 		&i.RefreshExpiresAt,
@@ -901,7 +930,7 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsPara
 }
 
 const listFriendsByID = `-- name: ListFriendsByID :many
-SELECT u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at
+SELECT u.id, u.display_name, u.username, u.email, u.image_url, u.spotify_id, u.spotify_display_name, u.spotify_url, u.spotify_data, u.registered_at, u.role, u.password, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM friendships f
 JOIN users u
   ON (u.id = CASE
@@ -925,13 +954,15 @@ func (q *Queries) ListFriendsByID(ctx context.Context, userAID uuid.UUID) ([]Use
 			&i.ID,
 			&i.DisplayName,
 			&i.Username,
-			&i.ImageUrl,
 			&i.Email,
+			&i.ImageUrl,
+			&i.SpotifyID,
+			&i.SpotifyDisplayName,
+			&i.SpotifyUrl,
+			&i.SpotifyData,
 			&i.RegisteredAt,
 			&i.Role,
 			&i.Password,
-			&i.SpotifyUserID,
-			&i.SpotifyUserData,
 			&i.CreatedAt,
 			&i.RefreshToken,
 			&i.RefreshExpiresAt,
@@ -947,7 +978,7 @@ func (q *Queries) ListFriendsByID(ctx context.Context, userAID uuid.UUID) ([]Use
 }
 
 const listFriendsByUsername = `-- name: ListFriendsByUsername :many
-SELECT friend.id, friend.display_name, friend.username, friend.image_url, friend.email, friend.registered_at, friend.role, friend.password, friend.spotify_user_id, friend.spotify_user_data, friend.created_at, friend.refresh_token, friend.refresh_expires_at
+SELECT friend.id, friend.display_name, friend.username, friend.email, friend.image_url, friend.spotify_id, friend.spotify_display_name, friend.spotify_url, friend.spotify_data, friend.registered_at, friend.role, friend.password, friend.created_at, friend.refresh_token, friend.refresh_expires_at
 FROM users AS me
   JOIN friendships AS f
     ON me.id IN (f.user_a_id, f.user_b_id)
@@ -974,13 +1005,15 @@ func (q *Queries) ListFriendsByUsername(ctx context.Context, username pgtype.Tex
 			&i.ID,
 			&i.DisplayName,
 			&i.Username,
-			&i.ImageUrl,
 			&i.Email,
+			&i.ImageUrl,
+			&i.SpotifyID,
+			&i.SpotifyDisplayName,
+			&i.SpotifyUrl,
+			&i.SpotifyData,
 			&i.RegisteredAt,
 			&i.Role,
 			&i.Password,
-			&i.SpotifyUserID,
-			&i.SpotifyUserData,
 			&i.CreatedAt,
 			&i.RefreshToken,
 			&i.RefreshExpiresAt,
@@ -996,7 +1029,7 @@ func (q *Queries) ListFriendsByUsername(ctx context.Context, username pgtype.Tex
 }
 
 const listIncomingRequests = `-- name: ListIncomingRequests :many
-SELECT u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
+SELECT u.id, u.display_name, u.username, u.email, u.image_url, u.spotify_id, u.spotify_display_name, u.spotify_url, u.spotify_data, u.registered_at, u.role, u.password, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM friendships f
 JOIN users u
 ON (u.id = CASE
@@ -1026,13 +1059,15 @@ func (q *Queries) ListIncomingRequests(ctx context.Context, userAID uuid.UUID) (
 			&i.User.ID,
 			&i.User.DisplayName,
 			&i.User.Username,
-			&i.User.ImageUrl,
 			&i.User.Email,
+			&i.User.ImageUrl,
+			&i.User.SpotifyID,
+			&i.User.SpotifyDisplayName,
+			&i.User.SpotifyUrl,
+			&i.User.SpotifyData,
 			&i.User.RegisteredAt,
 			&i.User.Role,
 			&i.User.Password,
-			&i.User.SpotifyUserID,
-			&i.User.SpotifyUserData,
 			&i.User.CreatedAt,
 			&i.User.RefreshToken,
 			&i.User.RefreshExpiresAt,
@@ -1054,7 +1089,7 @@ func (q *Queries) ListIncomingRequests(ctx context.Context, userAID uuid.UUID) (
 }
 
 const listOutgoingRequests = `-- name: ListOutgoingRequests :many
-SELECT u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
+SELECT u.id, u.display_name, u.username, u.email, u.image_url, u.spotify_id, u.spotify_display_name, u.spotify_url, u.spotify_data, u.registered_at, u.role, u.password, u.created_at, u.refresh_token, u.refresh_expires_at, f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM friendships f
 JOIN users u
 ON (u.id = CASE
@@ -1084,13 +1119,15 @@ func (q *Queries) ListOutgoingRequests(ctx context.Context, userAID uuid.UUID) (
 			&i.User.ID,
 			&i.User.DisplayName,
 			&i.User.Username,
-			&i.User.ImageUrl,
 			&i.User.Email,
+			&i.User.ImageUrl,
+			&i.User.SpotifyID,
+			&i.User.SpotifyDisplayName,
+			&i.User.SpotifyUrl,
+			&i.User.SpotifyData,
 			&i.User.RegisteredAt,
 			&i.User.Role,
 			&i.User.Password,
-			&i.User.SpotifyUserID,
-			&i.User.SpotifyUserData,
 			&i.User.CreatedAt,
 			&i.User.RefreshToken,
 			&i.User.RefreshExpiresAt,
@@ -1148,7 +1185,7 @@ func (q *Queries) ListRegisteredUsers(ctx context.Context, arg ListRegisteredUse
 
 const listRequests = `-- name: ListRequests :many
 SELECT
-    u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
+    u.id, u.display_name, u.username, u.email, u.image_url, u.spotify_id, u.spotify_display_name, u.spotify_url, u.spotify_data, u.registered_at, u.role, u.password, u.created_at, u.refresh_token, u.refresh_expires_at,
     f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM friendships f
 JOIN users u
@@ -1178,13 +1215,15 @@ func (q *Queries) ListRequests(ctx context.Context, userAID uuid.UUID) ([]ListRe
 			&i.User.ID,
 			&i.User.DisplayName,
 			&i.User.Username,
-			&i.User.ImageUrl,
 			&i.User.Email,
+			&i.User.ImageUrl,
+			&i.User.SpotifyID,
+			&i.User.SpotifyDisplayName,
+			&i.User.SpotifyUrl,
+			&i.User.SpotifyData,
 			&i.User.RegisteredAt,
 			&i.User.Role,
 			&i.User.Password,
-			&i.User.SpotifyUserID,
-			&i.User.SpotifyUserData,
 			&i.User.CreatedAt,
 			&i.User.RefreshToken,
 			&i.User.RefreshExpiresAt,
@@ -1280,7 +1319,7 @@ func (q *Queries) RemoveFriendship(ctx context.Context, arg RemoveFriendshipPara
 
 const searchUsers = `-- name: SearchUsers :many
 SELECT
-    u.id, u.display_name, u.username, u.image_url, u.email, u.registered_at, u.role, u.password, u.spotify_user_id, u.spotify_user_data, u.created_at, u.refresh_token, u.refresh_expires_at,
+    u.id, u.display_name, u.username, u.email, u.image_url, u.spotify_id, u.spotify_display_name, u.spotify_url, u.spotify_data, u.registered_at, u.role, u.password, u.created_at, u.refresh_token, u.refresh_expires_at,
     f.user_a_id, f.user_b_id, f.requester_id, f.status, f.requested_at, f.responded_at
 FROM users u
 LEFT JOIN friendships f
@@ -1322,13 +1361,15 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Sea
 			&i.User.ID,
 			&i.User.DisplayName,
 			&i.User.Username,
-			&i.User.ImageUrl,
 			&i.User.Email,
+			&i.User.ImageUrl,
+			&i.User.SpotifyID,
+			&i.User.SpotifyDisplayName,
+			&i.User.SpotifyUrl,
+			&i.User.SpotifyData,
 			&i.User.RegisteredAt,
 			&i.User.Role,
 			&i.User.Password,
-			&i.User.SpotifyUserID,
-			&i.User.SpotifyUserData,
 			&i.User.CreatedAt,
 			&i.User.RefreshToken,
 			&i.User.RefreshExpiresAt,
@@ -1353,7 +1394,7 @@ const signUpUser = `-- name: SignUpUser :one
 UPDATE users
 SET username = $1, display_name = $2, registered_at = now()
 WHERE id = $3
-RETURNING id, display_name, username, image_url, email, registered_at, role, password, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
+RETURNING id, display_name, username, email, image_url, spotify_id, spotify_display_name, spotify_url, spotify_data, registered_at, role, password, created_at, refresh_token, refresh_expires_at
 `
 
 type SignUpUserParams struct {
@@ -1369,13 +1410,15 @@ func (q *Queries) SignUpUser(ctx context.Context, arg SignUpUserParams) (User, e
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
-		&i.ImageUrl,
 		&i.Email,
+		&i.ImageUrl,
+		&i.SpotifyID,
+		&i.SpotifyDisplayName,
+		&i.SpotifyUrl,
+		&i.SpotifyData,
 		&i.RegisteredAt,
 		&i.Role,
 		&i.Password,
-		&i.SpotifyUserID,
-		&i.SpotifyUserData,
 		&i.CreatedAt,
 		&i.RefreshToken,
 		&i.RefreshExpiresAt,
@@ -1438,7 +1481,7 @@ SET
   display_name = COALESCE($2, display_name),
   email = COALESCE($4, email)
 WHERE id = $3
-RETURNING id, display_name, username, image_url, email, registered_at, role, password, spotify_user_id, spotify_user_data, created_at, refresh_token, refresh_expires_at
+RETURNING id, display_name, username, email, image_url, spotify_id, spotify_display_name, spotify_url, spotify_data, registered_at, role, password, created_at, refresh_token, refresh_expires_at
 `
 
 type UpdateUserProfileParams struct {
@@ -1460,13 +1503,15 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.ID,
 		&i.DisplayName,
 		&i.Username,
-		&i.ImageUrl,
 		&i.Email,
+		&i.ImageUrl,
+		&i.SpotifyID,
+		&i.SpotifyDisplayName,
+		&i.SpotifyUrl,
+		&i.SpotifyData,
 		&i.RegisteredAt,
 		&i.Role,
 		&i.Password,
-		&i.SpotifyUserID,
-		&i.SpotifyUserData,
 		&i.CreatedAt,
 		&i.RefreshToken,
 		&i.RefreshExpiresAt,

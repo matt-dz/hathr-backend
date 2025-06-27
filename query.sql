@@ -1,8 +1,13 @@
 -- name: CreateSpotifyUser :one
-INSERT INTO users (spotify_user_id, email, spotify_user_data)
-VALUES ($1, $2, $3)
-ON CONFLICT (spotify_user_id) DO UPDATE
-SET email = users.email -- no op
+INSERT INTO users (email, spotify_id, spotify_display_name, spotify_url, spotify_data, refresh_token, image_url)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (spotify_id) DO UPDATE
+    SET
+        email = EXCLUDED.email,
+        spotify_display_name = EXCLUDED.spotify_display_name,
+        spotify_url = EXCLUDED.spotify_url,
+        spotify_data = EXCLUDED.spotify_data,
+        image_url = EXCLUDED.image_url
 RETURNING *;
 
 -- name: UpdateUserImage :execrows
@@ -11,7 +16,7 @@ SET image_url = $1
 WHERE id = $2;
 
 -- name: GetUserBySpotifyId :one
-SELECT * FROM users WHERE spotify_user_id = $1;
+SELECT * FROM users WHERE spotify_id = $1;
 
 -- name: SignUpUser :one
 UPDATE users
@@ -426,7 +431,7 @@ FROM playlists
 WHERE id = $1;
 
 -- name: GetSpotifyUserID :one
-SELECT spotify_user_id FROM users WHERE id = $1;
+SELECT spotify_id FROM users WHERE id = $1;
 
 -- name: CountFriends :one
 SELECT COUNT(f)

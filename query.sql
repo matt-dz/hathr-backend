@@ -89,13 +89,15 @@ SELECT
   st.href
 FROM spotify_playlist_tracks ppt
 JOIN spotify_tracks st ON st.id = ppt.track_id
-WHERE ppt.playlist_id = $1;
+WHERE ppt.playlist_id = $1
+ORDER BY ppt.plays DESC;
 
 -- name: GetSpotifyPlaylistTrackIDs :many
 SELECT st.id
 FROM spotify_playlist_tracks ppt
 JOIN spotify_tracks st ON st.id = ppt.track_id
-WHERE ppt.playlist_id = $1;
+WHERE ppt.playlist_id = $1
+ORDER BY plays DESC;
 
 -- name: GetLatestPrivateKey :one
 SELECT * FROM private_keys

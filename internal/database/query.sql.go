@@ -536,6 +536,7 @@ SELECT st.id
 FROM spotify_playlist_tracks ppt
 JOIN spotify_tracks st ON st.id = ppt.track_id
 WHERE ppt.playlist_id = $1
+ORDER BY plays DESC
 `
 
 func (q *Queries) GetSpotifyPlaylistTrackIDs(ctx context.Context, playlistID uuid.UUID) ([]string, error) {
@@ -568,6 +569,7 @@ SELECT
 FROM spotify_playlist_tracks ppt
 JOIN spotify_tracks st ON st.id = ppt.track_id
 WHERE ppt.playlist_id = $1
+ORDER BY ppt.plays DESC
 `
 
 type GetSpotifyPlaylistTracksRow struct {

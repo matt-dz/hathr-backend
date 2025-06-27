@@ -50,19 +50,22 @@ func (q *Queries) AcceptFriendRequest(ctx context.Context, arg AcceptFriendReque
 }
 
 const addSpotifyPlaylistTracks = `-- name: AddSpotifyPlaylistTracks :exec
-INSERT INTO spotify_playlist_tracks (playlist_id, track_id)
-SELECT $1::UUID, t
-FROM unnest($2::TEXT[]) AS t
+INSERT INTO spotify_playlist_tracks (playlist_id, track_id, plays)
+SELECT $1::UUID, u.track_ids, p.plays
+FROM unnest($2::TEXT[]) WITH ORDINALITY AS u(track_ids, idx)
+    JOIN unnest($3::INTEGER[]) WITH ORDINALITY AS p(plays, idx)
+    USING (idx)
 ON CONFLICT DO NOTHING
 `
 
 type AddSpotifyPlaylistTracksParams struct {
 	PlaylistID uuid.UUID `json:"playlist_id"`
 	TrackIds   []string  `json:"track_ids"`
+	Plays      []int32   `json:"plays"`
 }
 
 func (q *Queries) AddSpotifyPlaylistTracks(ctx context.Context, arg AddSpotifyPlaylistTracksParams) error {
-	_, err := q.db.Exec(ctx, addSpotifyPlaylistTracks, arg.PlaylistID, arg.TrackIds)
+	_, err := q.db.Exec(ctx, addSpotifyPlaylistTracks, arg.PlaylistID, arg.TrackIds, arg.Plays)
 	return err
 }
 
@@ -193,7 +196,7 @@ func (q *Queries) CreateSpotifyPlay(ctx context.Context, arg CreateSpotifyPlayPa
 const createSpotifyPlays = `-- name: CreateSpotifyPlays :exec
 INSERT INTO spotify_plays (user_id, track_id, played_at)
 SELECT $1::UUID, u.ids, p.played
-FROM  unnest($2::TEXT[]) WITH ORDINALITY AS u(ids, idx)
+FROM unnest($2::TEXT[]) WITH ORDINALITY AS u(ids, idx)
     JOIN unnest($3::TIMESTAMPTZ[]) WITH ORDINALITY AS p(played, idx)
     USING (idx)
 ON CONFLICT DO NOTHING

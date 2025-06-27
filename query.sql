@@ -356,9 +356,11 @@ ON CONFLICT (user_id, type, year, month, day) DO UPDATE
 RETURNING id as playlist_id;
 
 -- name: AddSpotifyPlaylistTracks :exec
-INSERT INTO spotify_playlist_tracks (playlist_id, track_id)
-SELECT @playlist_id::UUID, t
-FROM unnest(@track_ids::TEXT[]) AS t
+INSERT INTO spotify_playlist_tracks (playlist_id, track_id, plays)
+SELECT @playlist_id::UUID, u.track_ids, p.plays
+FROM unnest(@track_ids::TEXT[]) WITH ORDINALITY AS u(track_ids, idx)
+    JOIN unnest(@plays::INTEGER[]) WITH ORDINALITY AS p(plays, idx)
+    USING (idx)
 ON CONFLICT DO NOTHING;
 
 -- name: CreateSpotifyTracks :exec
@@ -383,7 +385,7 @@ ON CONFLICT DO NOTHING;
 -- name: CreateSpotifyPlays :exec
 INSERT INTO spotify_plays (user_id, track_id, played_at)
 SELECT @user_id::UUID, u.ids, p.played
-FROM  unnest(@ids::TEXT[]) WITH ORDINALITY AS u(ids, idx)
+FROM unnest(@ids::TEXT[]) WITH ORDINALITY AS u(ids, idx)
     JOIN unnest(@played::TIMESTAMPTZ[]) WITH ORDINALITY AS p(played, idx)
     USING (idx)
 ON CONFLICT DO NOTHING;

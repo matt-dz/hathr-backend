@@ -219,6 +219,7 @@ type SpotifyPlay struct {
 type SpotifyPlaylistTrack struct {
 	PlaylistID uuid.UUID `json:"playlist_id"`
 	TrackID    string    `json:"track_id"`
+	Plays      int32     `json:"plays"`
 }
 
 type SpotifyToken struct {

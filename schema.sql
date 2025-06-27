@@ -130,6 +130,9 @@ CREATE TABLE spotify_tracks (
 CREATE TABLE spotify_playlist_tracks(
     playlist_id UUID NOT NULL,
     track_id TEXT NOT NULL,
+    plays INTEGER NOT NULL,
+
+    CONSTRAINT positive_plays CHECK (plays > 0),
 
     PRIMARY KEY (playlist_id, track_id),
     FOREIGN KEY (playlist_id) REFERENCES playlists (id)

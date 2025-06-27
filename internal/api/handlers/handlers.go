@@ -877,12 +877,15 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 	// Add tracks
 	env.Logger.DebugContext(ctx, "Adding tracks to playlist in DB")
 	trackIDs := make([]string, len(tracks))
+	plays := make([]int32, len(tracks))
 	for i, track := range tracks {
 		trackIDs[i] = track.TrackID
+		plays[i] = int32(track.Plays)
 	}
 	err = env.Database.AddSpotifyPlaylistTracks(ctx, database.AddSpotifyPlaylistTracksParams{
 		PlaylistID: playlistID,
 		TrackIds:   trackIDs,
+		Plays:      plays,
 	})
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to add tracks to playlist in DB", slog.Any("error", err))

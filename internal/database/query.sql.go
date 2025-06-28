@@ -147,6 +147,24 @@ func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendReque
 	return i, err
 }
 
+const createInviteCode = `-- name: CreateInviteCode :one
+INSERT INTO invite_codes (code)
+VALUES ($1)
+RETURNING code, expires_at
+`
+
+type CreateInviteCodeRow struct {
+	Code      string             `json:"code"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) CreateInviteCode(ctx context.Context, code string) (CreateInviteCodeRow, error) {
+	row := q.db.QueryRow(ctx, createInviteCode, code)
+	var i CreateInviteCodeRow
+	err := row.Scan(&i.Code, &i.ExpiresAt)
+	return i, err
+}
+
 const createMonthlySpotifyPlaylist = `-- name: CreateMonthlySpotifyPlaylist :one
 INSERT INTO playlists (user_id, name, type, visibility, year, month, day, image_url)
 VALUES ($1, $2, 'monthly', 'unreleased', $3, $4, 1, $5)
@@ -409,6 +427,25 @@ func (q *Queries) GetFriendshipStatus(ctx context.Context, arg GetFriendshipStat
 		&i.RequestedAt,
 		&i.RespondedAt,
 	)
+	return i, err
+}
+
+const getJWTDataFromUser = `-- name: GetJWTDataFromUser :one
+SELECT id, role, registered_at
+FROM users
+WHERE id = $1
+`
+
+type GetJWTDataFromUserRow struct {
+	ID           uuid.UUID          `json:"id"`
+	Role         Role               `json:"role"`
+	RegisteredAt pgtype.Timestamptz `json:"registered_at"`
+}
+
+func (q *Queries) GetJWTDataFromUser(ctx context.Context, id uuid.UUID) (GetJWTDataFromUserRow, error) {
+	row := q.db.QueryRow(ctx, getJWTDataFromUser, id)
+	var i GetJWTDataFromUserRow
+	err := row.Scan(&i.ID, &i.Role, &i.RegisteredAt)
 	return i, err
 }
 
@@ -929,6 +966,21 @@ func (q *Queries) GetUserPlaylists(ctx context.Context, arg GetUserPlaylistsPara
 	return items, nil
 }
 
+const isUserInvited = `-- name: IsUserInvited :one
+SELECT EXISTS (
+    SELECT 1
+    FROM invite_codes
+    WHERE redeemed_by = $1
+) AS is_invited
+`
+
+func (q *Queries) IsUserInvited(ctx context.Context, redeemedBy uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, isUserInvited, redeemedBy)
+	var is_invited bool
+	err := row.Scan(&is_invited)
+	return is_invited, err
+}
+
 const listFriendsByID = `-- name: ListFriendsByID :many
 SELECT u.id, u.display_name, u.username, u.email, u.image_url, u.spotify_id, u.spotify_display_name, u.spotify_url, u.spotify_data, u.registered_at, u.role, u.password, u.created_at, u.refresh_token, u.refresh_expires_at
 FROM friendships f
@@ -1242,6 +1294,30 @@ func (q *Queries) ListRequests(ctx context.Context, userAID uuid.UUID) ([]ListRe
 		return nil, err
 	}
 	return items, nil
+}
+
+const redeemInviteCode = `-- name: RedeemInviteCode :execrows
+UPDATE invite_codes
+SET
+    redeemed_by = $1,
+    redeemed_at = now()
+WHERE
+    code = $2
+    AND redeemed_by IS NULL
+    AND expires_at > now()
+`
+
+type RedeemInviteCodeParams struct {
+	RedeemedBy uuid.UUID `json:"redeemed_by"`
+	Code       string    `json:"code"`
+}
+
+func (q *Queries) RedeemInviteCode(ctx context.Context, arg RedeemInviteCodeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, redeemInviteCode, arg.RedeemedBy, arg.Code)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const releaseMonthlyPlaylists = `-- name: ReleaseMonthlyPlaylists :execrows

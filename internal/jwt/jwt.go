@@ -42,6 +42,7 @@ type JWTParams struct {
 	Role       string
 	UserID     string
 	Registered bool
+	Invited    bool
 }
 
 // Creates a JWT
@@ -55,6 +56,7 @@ func CreateJWT(params JWTParams, privateKeyBytes []byte) (string, error) {
 		"sub":        params.UserID,
 		"role":       params.Role,
 		"registered": params.Registered,
+		"invited":    params.Invited,
 		"iat":        time.Now().Unix(),
 		"exp":        time.Now().Add(time.Hour).Unix(),
 	}

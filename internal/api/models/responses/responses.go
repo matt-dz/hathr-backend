@@ -5,6 +5,7 @@ package responses
 import (
 	"hathr-backend/internal/api/models"
 	"hathr-backend/internal/database"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -71,4 +72,9 @@ type CountFriends struct {
 
 type GetFriendshipStatus struct {
 	Friendship *database.Friendship `json:"friendship"`
+}
+
+type CreateInvite struct {
+	Code      string    `json:"code"`
+	ExpiresAt time.Time `json:"expires_at"`
 }

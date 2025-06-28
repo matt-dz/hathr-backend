@@ -113,7 +113,6 @@ CREATE TABLE playlists (
         END
     ),
 
-    UNIQUE (user_id, type, year, month), -- Unique monthly playlists
     UNIQUE (user_id, type, year, month, day), -- Unique weekly playlists
 
     PRIMARY KEY (id),
@@ -184,4 +183,21 @@ CREATE TYPE spotify_track_input AS (
     image_url  text,
     href       text,
     raw        jsonb
+);
+
+CREATE TABLE invite_codes (
+    code TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '1 day'),
+    redeemed_by UUID,
+    redeemed_at TIMESTAMPTZ,
+
+    CONSTRAINT valid_redemption CHECK (
+        (redeemed_by IS NULL AND redeemed_at IS NULL)
+        OR (redeemed_by IS NOT NULL AND redeemed_at IS NOT NULL AND expires_at > redeemed_at)
+    ),
+
+    PRIMARY KEY (code),
+    FOREIGN KEY (redeemed_by) REFERENCES users (id)
+        ON DELETE SET NULL
 );

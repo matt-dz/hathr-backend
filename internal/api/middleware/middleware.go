@@ -167,6 +167,46 @@ func AuthorizeRequest(next http.Handler) http.Handler {
 	})
 }
 
+func AuthorizeRegisteredRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
+		if !ok {
+			env = hathrEnv.Null()
+		}
+
+		token, ok := r.Context().Value("jwt").(*jwt.Token)
+		if !ok {
+			env.Logger.ErrorContext(r.Context(), "Failed to get JWT claims")
+			http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+			return
+		}
+
+		env.Logger.DebugContext(r.Context(), "Authenticating user as registered")
+		mapClaims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			env.Logger.ErrorContext(r.Context(), "Failed to get JWT claims")
+			http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
+			return
+		}
+
+		registered, ok := mapClaims["registered"].(bool)
+		if !ok {
+			env.Logger.ErrorContext(r.Context(), "Failed to get role claim")
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		if !registered {
+			env.Logger.ErrorContext(r.Context(), "User is not registered")
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+
+		env.Logger.DebugContext(r.Context(), "User successfully authenticated as an registered user")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Ensures admin claim is present and true in JWT
 func AuthorizeAdminRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -274,6 +314,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 
 	playlists := s.PathPrefix("/playlists").Subrouter()
 	playlists.Use(AuthorizeRequest)
+	playlists.Use(AuthorizeRegisteredRequest)
 	playlists.HandleFunc("/friends", handlers.GetFriendsPlaylists).Methods("GET", "OPTIONS")
 	playlists.HandleFunc("/{id}", handlers.GetPlaylist).Methods("GET", "OPTIONS")
 	playlists.HandleFunc("/{id}", handlers.UpdateVisibility).Methods("PATCH", "OPTIONS")
@@ -285,6 +326,7 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 
 	playlist := s.PathPrefix("/playlist").Subrouter()
 	playlist.Use(AuthorizeRequest)
+	playlist.Use(AuthorizeRegisteredRequest)
 	playlist.HandleFunc("/{playlist_id}/spotify/add", handlers.AddPlaylistToSpotify).Methods("POST", "OPTIONS")
 
 	adminPlaylist := playlist.NewRoute().Subrouter()
@@ -299,13 +341,15 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 
 	friendships := s.PathPrefix("/friendships").Subrouter()
 	friendships.Use(AuthorizeRequest)
-	friendships.Path("").HandlerFunc(handlers.GetFriendshipStatus).Methods("GET", "OPTIONS")
+	friendships.Use(AuthorizeRegisteredRequest)
+	friendships.HandleFunc("", handlers.GetFriendshipStatus).Methods("GET", "OPTIONS")
 	friendships.HandleFunc("/{username}/count", handlers.CountFriends).Methods("GET", "OPTIONS")
 	friendships.HandleFunc("/{username}", handlers.GetUserFriends).Methods("GET", "OPTIONS")
 	friendships.HandleFunc("/{username}", handlers.RemoveFriend).Methods("DELETE", "OPTIONS")
 
 	friendRequests := s.PathPrefix("/friend-requests").Subrouter()
 	friendRequests.Use(AuthorizeRequest)
+	friendRequests.Use(AuthorizeRegisteredRequest)
 	friendRequests.HandleFunc("", handlers.ListRequests).Methods("GET", "OPTIONS")
 	friendRequests.HandleFunc("/{username}", handlers.CreateFriendRequest).Methods("POST", "OPTIONS")
 	friendRequests.HandleFunc("/{username}", handlers.UpdateFriendshipStatus).Methods("PATCH", "OPTIONS")
@@ -313,10 +357,12 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 
 	search := s.PathPrefix("/search").Subrouter()
 	search.Use(AuthorizeRequest)
+	search.Use(AuthorizeRegisteredRequest)
 	search.HandleFunc("", handlers.Search).Methods("GET", "OPTIONS")
 
 	users := s.PathPrefix("/users").Subrouter()
 	users.Use(AuthorizeRequest)
+	users.Use(AuthorizeRegisteredRequest)
 	users.HandleFunc("/{username}", handlers.GetUserByUsername).Methods("GET", "OPTIONS")
 	users.HandleFunc("/{username}/playlists", handlers.GetUserPlaylists).Methods("GET", "OPTIONS")
 
@@ -325,4 +371,12 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	adminUsers.Use(AuthorizeAdminRequest)
 	adminUsers.HandleFunc("", handlers.ListRegisteredUsers).Methods("GET", "OPTIONS")
 	adminUsers.HandleFunc("/{id}/plays/spotify", handlers.UpdateSpotifyPlays).Methods("POST", "OPTIONS")
+
+	invites := s.PathPrefix("/invites").Subrouter()
+	invites.Use(AuthorizeRequest)
+	invites.HandleFunc("/{code}/redemption", handlers.RedeemInvite).Methods("POST", "OPTIONS")
+
+	invitesAdmin := invites.NewRoute().Subrouter()
+	invitesAdmin.Use(AuthorizeAdminRequest)
+	invitesAdmin.HandleFunc("", handlers.CreateInvite).Methods("POST", "OPTIONS")
 }

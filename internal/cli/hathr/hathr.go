@@ -328,6 +328,8 @@ func CreateWeeklyPlaylistCover(day uint8, month time.Month, year uint16, bearerT
 	if err != nil {
 		return err
 	}
+	defer res.Body.Close()
+
 	if res.StatusCode > 299 {
 		body, err := io.ReadAll(res.Body)
 		if err != nil {
@@ -363,6 +365,8 @@ func CreateMonthlyPlaylistCover(month time.Month, year uint16, bearerToken strin
 	if err != nil {
 		return err
 	}
+	defer res.Body.Close()
+
 	if res.StatusCode > 299 {
 		body, err := io.ReadAll(res.Body)
 		if err != nil {
@@ -373,4 +377,41 @@ func CreateMonthlyPlaylistCover(month time.Month, year uint16, bearerToken strin
 	}
 
 	return nil
+}
+
+func CreateInviteCode(bearerToken string, env *env.Env) (responses.CreateInvite, error) {
+	var response responses.CreateInvite
+
+	// Build request
+	url := fmt.Sprintf("%s/api/invites", backendUrl)
+	req, err := retryablehttp.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		return response, err
+	}
+	req.Header.Add("Authorization", bearerToken)
+
+	// Send request
+	res, err := env.Http.Do(req)
+	if err != nil {
+		return response, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode > 299 {
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			env.Logger.Error("Failed to read response body", slog.Any("error", err))
+			return response, errors.Join(err, hathrHttp.NewHTTPError(res.StatusCode, res.Status, ""))
+		}
+		return response, hathrHttp.NewHTTPError(res.StatusCode, res.Status, string(body))
+	}
+
+	// Decode response
+	decoder := json.NewDecoder(res.Body)
+	decoder.DisallowUnknownFields()
+	if err := hathrJson.DecodeJson(&response, decoder); err != nil {
+		return response, err
+	}
+
+	return response, nil
 }

@@ -4,7 +4,7 @@ metadata:
   name: monthly-playlist-generator
   namespace: hathr
 spec:
-  schedule: "0 19 1 * *" # Every 1st day of the month at 7 PM
+  schedule: "55 19 1 * *" # Every 1st day of the month at 7:55 PM
   concurrencyPolicy: Allow
   jobTemplate:
     spec:
@@ -62,7 +62,7 @@ metadata:
   name: monthly-playlist-cover-generator
   namespace: hathr
 spec:
-  schedule: "0 19 1 * *" # Every 1st day of the month at 7 PM
+  schedule: "55 19 1 * *" # Every 1st day of the month at 7:55 PM
   concurrencyPolicy: Allow
   jobTemplate:
     spec:

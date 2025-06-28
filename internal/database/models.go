@@ -192,14 +192,6 @@ type Friendship struct {
 	RespondedAt pgtype.Timestamptz `json:"responded_at"`
 }
 
-type InviteCode struct {
-	Code       string             `json:"code"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
-	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
-	RedeemedBy uuid.UUID          `json:"redeemed_by"`
-	RedeemedAt pgtype.Timestamptz `json:"redeemed_at"`
-}
-
 type Playlist struct {
 	ID         uuid.UUID          `json:"id"`
 	UserID     uuid.UUID          `json:"user_id"`

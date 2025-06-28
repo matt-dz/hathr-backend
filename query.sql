@@ -453,31 +453,3 @@ AND f.user_b_id = GREATEST(
         (SELECT id FROM users u WHERE u.username = @username_a::text),
         (SELECT id FROM users u WHERE u.username = @username_b::text)
     );
-
--- name: CreateInviteCode :one
-INSERT INTO invite_codes (code)
-VALUES ($1)
-RETURNING code, expires_at;
-
--- name: RedeemInviteCode :execrows
-UPDATE invite_codes
-SET
-    redeemed_by = $1,
-    redeemed_at = now()
-WHERE
-    code = $2
-    AND redeemed_by IS NULL
-    AND expires_at > now();
-
-
--- name: GetJWTDataFromUser :one
-SELECT id, role, registered_at
-FROM users
-WHERE id = $1;
-
--- name: IsUserInvited :one
-SELECT EXISTS (
-    SELECT 1
-    FROM invite_codes
-    WHERE redeemed_by = $1
-) AS is_invited;

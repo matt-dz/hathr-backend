@@ -372,11 +372,11 @@ func AddRoutes(router *mux.Router, env *hathrEnv.Env) {
 	adminUsers.HandleFunc("", handlers.ListRegisteredUsers).Methods("GET", "OPTIONS")
 	adminUsers.HandleFunc("/{id}/plays/spotify", handlers.UpdateSpotifyPlays).Methods("POST", "OPTIONS")
 
-	invites := s.PathPrefix("/invites").Subrouter()
-	invites.Use(AuthorizeRequest)
-	invites.HandleFunc("/{code}/redemption", handlers.RedeemInvite).Methods("POST", "OPTIONS")
+	// invites := s.PathPrefix("/invites").Subrouter()
+	// invites.Use(AuthorizeRequest)
+	// invites.HandleFunc("/{code}/redemption", handlers.RedeemInvite).Methods("POST", "OPTIONS")
 
-	invitesAdmin := invites.NewRoute().Subrouter()
-	invitesAdmin.Use(AuthorizeAdminRequest)
-	invitesAdmin.HandleFunc("", handlers.CreateInvite).Methods("POST", "OPTIONS")
+	// invitesAdmin := invites.NewRoute().Subrouter()
+	// invitesAdmin.Use(AuthorizeAdminRequest)
+	// invitesAdmin.HandleFunc("", handlers.CreateInvite).Methods("POST", "OPTIONS")
 }

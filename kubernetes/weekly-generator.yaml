@@ -4,7 +4,7 @@ metadata:
   name: weekly-playlist-generator
   namespace: hathr
 spec:
-  schedule: "0 18 * * 5" # Every Friday at 6 PM
+  schedule: "55 18 * * 5" # Every Friday at 6:55 PM
   concurrencyPolicy: Allow
   jobTemplate:
     spec:
@@ -62,7 +62,7 @@ metadata:
   name: weekly-playlist-cover-generator
   namespace: hathr
 spec:
-  schedule: "0 18 * * 5" # Every Friday at 6 PM
+  schedule: "55 18 * * 5" # Every Friday at 6:55 PM
   concurrencyPolicy: Allow
   jobTemplate:
     spec:

@@ -207,24 +207,6 @@ func retrieveSpotifyToken(userID uuid.UUID, env *hathrEnv.Env, ctx context.Conte
 	return res.AccessToken, nil
 }
 
-func validateInvitation(token *jwt.Token) error {
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return fmt.Errorf("Invalid JWT claims. Unable to cast to MapClaims")
-	}
-
-	invited, ok := claims["invited"].(bool)
-	if !ok {
-		return fmt.Errorf("Invalid JWT claims. Unable to get 'invited' claim")
-	}
-
-	if !invited {
-		return fmt.Errorf("User is not invited.")
-	}
-
-	return nil
-}
-
 func loadDate(year int, month time.Month, day, hour, min, sec, nsec int) (time.Time, error) {
 	loc, err := time.LoadLocation("America/New_York")
 	if err != nil {
@@ -519,13 +501,6 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	invited, err := env.Database.IsUserInvited(ctx, hathrUser.ID)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to check if user is invited", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
 	// Retrieve private key for JWT signing
 	env.Logger.DebugContext(ctx, "Retrieving private key")
 	key, err := env.Database.GetLatestPrivateKey(ctx)
@@ -537,7 +512,7 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT for user
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	signedJWT, err := buildJWT(hathrUser.ID, hathrUser.Role, hathrUser.RegisteredAt.Valid, key.Value, invited)
+	signedJWT, err := buildJWT(hathrUser.ID, hathrUser.Role, hathrUser.RegisteredAt.Valid, key.Value, false)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -589,11 +564,6 @@ func CompleteSignup(w http.ResponseWriter, r *http.Request) {
 		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
 		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
 		return
-	}
-
-	if err := validateInvitation(token); err != nil {
-		env.Logger.ErrorContext(ctx, "Invalid invitation token", slog.Any("error", err))
-		http.Error(w, "User was not invited", http.StatusForbidden)
 	}
 
 	// Validate parameters
@@ -732,14 +702,6 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user has redeemed an invitation
-	invited, err := env.Database.IsUserInvited(ctx, user.ID)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to check if user is invited", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
 	// Retrieve private key for JWT signing
 	env.Logger.DebugContext(ctx, "Retrieving private key")
 	key, err := env.Database.GetLatestPrivateKey(ctx)
@@ -761,7 +723,7 @@ func RefreshSession(w http.ResponseWriter, r *http.Request) {
 
 	// Create JWT
 	env.Logger.DebugContext(ctx, "Creating JWT")
-	accessToken, err := buildJWT(user.ID, user.Role, user.RegisteredAt.Valid, key.Value, invited)
+	accessToken, err := buildJWT(user.ID, user.Role, user.RegisteredAt.Valid, key.Value, false)
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -2586,138 +2548,6 @@ func AddPlaylistToSpotify(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to encode response", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-}
-
-func RedeemInvite(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
-	if !ok {
-		env = hathrEnv.Null()
-	}
-
-	// Retrieve request parameters
-	inviteCode := mux.Vars(r)["code"]
-	token, ok := ctx.Value("jwt").(*jwt.Token)
-	if !ok {
-		env.Logger.ErrorContext(ctx, "Failed to get JWT claims")
-		http.Error(w, "JWT not found", http.StatusUnauthorized)
-		return
-	}
-	userID, err := token.Claims.GetSubject()
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to get user ID from JWT claims")
-		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
-		return
-	}
-	mapClaims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		env.Logger.ErrorContext(ctx, "Failed to cast JWT claims to MapClaims")
-		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
-		return
-	}
-	role, ok := mapClaims["role"].(string)
-	if !ok {
-		env.Logger.ErrorContext(ctx, "Failed to get role status from JWT claims")
-		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
-		return
-	}
-	registered, ok := mapClaims["registered"].(bool)
-	if !ok {
-		env.Logger.ErrorContext(ctx, "Failed to get registered status from JWT claims")
-		http.Error(w, "Invalid JWT claims", http.StatusUnauthorized)
-		return
-	}
-
-	// Validate parameters
-	if err := uuid.Validate(userID); err != nil {
-		env.Logger.ErrorContext(ctx, "Invalid user ID in JWT", slog.Any("error", err))
-		http.Error(w, "Invalid user ID in JWT", http.StatusBadRequest)
-		return
-	}
-	if registered {
-		env.Logger.ErrorContext(ctx, "User already registered", slog.String("user_id", userID))
-		http.Error(w, "User already registered", http.StatusConflict)
-		return
-	}
-
-	// Redeem invite
-	env.Logger.DebugContext(ctx, "Redeeming invite code", slog.String("invite_code", inviteCode), slog.String("user_id", userID))
-	rows, err := env.Database.RedeemInviteCode(ctx, database.RedeemInviteCodeParams{
-		RedeemedBy: uuid.MustParse(userID),
-		Code:       inviteCode,
-	})
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to redeem invite code", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	if rows == 0 {
-		env.Logger.ErrorContext(ctx, "Invite code not found or already redeemed", slog.String("invite_code", inviteCode))
-		http.Error(w, "Invalid invite code", http.StatusConflict)
-		return
-	}
-	env.Logger.DebugContext(ctx, "Successfully redeemed invite code")
-
-	// Retrieve private key
-	env.Logger.DebugContext(ctx, "Retrieving private key")
-	key, err := env.Database.GetLatestPrivateKey(ctx)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to retrieve private key", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	// Create JWT for user
-	env.Logger.DebugContext(ctx, "Creating JWT")
-	signedJWT, err := buildJWT(uuid.MustParse(userID), database.Role(role), registered, key.Value, true)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Unable to create JWT", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	// Build response
-	w.Header().Set("Authorization", fmt.Sprintf("Bearer %s", signedJWT))
-	w.WriteHeader(http.StatusCreated)
-}
-
-func CreateInvite(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	env, ok := r.Context().Value(hathrEnv.Key).(*hathrEnv.Env)
-	if !ok {
-		env = hathrEnv.Null()
-	}
-
-	// Generate invite code
-	env.Logger.DebugContext(ctx, "Generating invite code")
-	code, err := generateInviteCode()
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to generate invite code", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	// Insert invite code into the database
-	env.Logger.DebugContext(ctx, "Inserting invite code into DB")
-	row, err := env.Database.CreateInviteCode(ctx, code)
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to insert invite code into DB", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	// Encode response
-	env.Logger.DebugContext(ctx, "Encoding response")
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(responses.CreateInvite{
-		Code:      row.Code,
-		ExpiresAt: row.ExpiresAt.Time,
-	})
-	if err != nil {
-		env.Logger.ErrorContext(ctx, "Failed to encode invite code response", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}

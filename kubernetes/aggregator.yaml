@@ -4,8 +4,8 @@ metadata:
   name: aggregate-plays
   namespace: hathr
 spec:
-  # run at minute 0 and 30 of every hour
-  schedule: "*/30 * * * *"
+  # run every 10th minute
+  schedule: "*/10 * * * *"
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:

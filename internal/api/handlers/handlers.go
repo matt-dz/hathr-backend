@@ -411,7 +411,15 @@ func SpotifyLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Login user
 	env.Logger.DebugContext(ctx, "Logging in user")
+	var httpErr *hathrHttp.HTTPError
 	loginRes, err := hathrSpotify.LoginUser(loginRequest, env, ctx)
+	if errors.As(err, &httpErr) {
+		env.Logger.ErrorContext(ctx, "Failed to login user", slog.Any("error", err))
+		if httpErr.Body == "Check settings on developer.spotify.com/dashboard, the user may not be registered." {
+			http.Error(w, "Hathr is invite only. Contact the developer to gain access.", http.StatusForbidden)
+			return
+		}
+	}
 	if err != nil {
 		env.Logger.ErrorContext(ctx, "Failed to login user", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

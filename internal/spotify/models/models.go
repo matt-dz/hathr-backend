@@ -220,3 +220,10 @@ type AddTracksRequest struct {
 	URIs     []string `json:"uris"`
 	Position int      `json:"position,omitempty"`
 }
+
+type Error struct {
+	Error struct {
+		Status  int    `json:"status"`
+		Message string `json:"message"`
+	} `json:"error"`
+}

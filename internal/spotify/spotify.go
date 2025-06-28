@@ -116,6 +116,16 @@ func GetUserProfile(bearerToken string, env *env.Env, ctx context.Context) (spot
 			env.Logger.ErrorContext(ctx, "Failed to read body", slog.Any("error", err))
 			return user, hathrHttp.NewHTTPError(res.StatusCode, res.Status, "")
 		}
+
+		var error models.Error
+		if res.StatusCode == http.StatusForbidden {
+			if err := json.Unmarshal(body, &error); err != nil {
+				env.Logger.ErrorContext(ctx, "Failed to decode error response", slog.Any("error", err))
+			} else {
+				return user, hathrHttp.NewHTTPError(res.StatusCode, res.Status, error.Error.Message)
+			}
+		}
+
 		return user, hathrHttp.NewHTTPError(res.StatusCode, res.Status, string(body))
 	}
 

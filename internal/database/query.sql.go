@@ -150,8 +150,6 @@ func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendReque
 const createMonthlySpotifyPlaylist = `-- name: CreateMonthlySpotifyPlaylist :one
 INSERT INTO playlists (user_id, name, type, visibility, year, month, day, image_url)
 VALUES ($1, $2, 'monthly', 'unreleased', $3, $4, 1, $5)
-ON CONFLICT (user_id, type, year, month) DO UPDATE
-    SET month = playlists.month -- no-op
 RETURNING id as playlist_id
 `
 

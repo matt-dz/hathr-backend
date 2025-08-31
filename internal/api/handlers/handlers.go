@@ -792,9 +792,11 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 	// Get time bounds
 	var startDate time.Time
 	var endDate time.Time
+	var err error
 	month := time.Month(request.Month.Index() + 1)
+	env.Logger.DebugContext(ctx, "Calculating time bounds", slog.String("type", request.Type), slog.Int("year", int(request.Year)), slog.Int("month", int(month)), slog.Int("day", int(request.Day)), slog.Int("hour", int(request.Hour)))
 	if request.Type == "monthly" {
-		startDate, err := loadDate(int(request.Year), month, 1, 0, 0, 0, 0)
+		startDate, err = loadDate(int(request.Year), month, 1, 0, 0, 0, 0)
 		if err != nil {
 			env.Logger.ErrorContext(ctx, "Failed to create start date", slog.Any("error", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -802,7 +804,7 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 		}
 		endDate = startDate.AddDate(0, 1, -1)
 	} else if request.Type == "weekly" {
-		startDate, err := loadDate(int(request.Year), month, int(request.Day), int(request.Hour), 0, 0, 0)
+		startDate, err = loadDate(int(request.Year), month, int(request.Day), int(request.Hour), 0, 0, 0)
 		if err != nil {
 			env.Logger.ErrorContext(ctx, "Failed to create start date", slog.Any("error", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -812,7 +814,7 @@ func CreateSpotifyPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get top tracks
-	env.Logger.DebugContext(ctx, "Getting top songs from DB")
+	env.Logger.DebugContext(ctx, "Getting top songs from DB", slog.Time("start", startDate), slog.Time("end", endDate))
 	tracks, err := env.Database.GetTopSpotifyTracks(ctx, database.GetTopSpotifyTracksParams{
 		Limit:  50,
 		UserID: uuid.MustParse(userID),
